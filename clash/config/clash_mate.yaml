@@ -1,6 +1,6 @@
 # 机场订阅，名称不能重复、热更新时间1800秒、健康检测true打开、网址、间隔300秒、订阅链接
 proxy-providers:
-  一元机场:
+  机场名1:
     type: http
     interval: 1800
     health-check:
@@ -8,8 +8,8 @@ proxy-providers:
       url: https://www.gstatic.com/generate_204
       interval: 300
     proxy: 全球直连
-    url: "https://sub3.smallstrawberry.com/api/v1/client/subscribe?token=e6d9c21044610a3074c3d8a66362a071"
-  龙猫云:
+    url: "订阅链接"
+  机场名2:
     type: http
     interval: 1800
     health-check:
@@ -17,7 +17,7 @@ proxy-providers:
       url: https://www.gstatic.com/generate_204
       interval: 300
     proxy: 全球直连
-    url: "https://linka.lmscunb.cc:2087/api/v1/client/subscribe?token=0baf5b0e93c74233c804c173d2015247"
+    url: "订阅链接"
     
 # 全局配置
 port: 7890
