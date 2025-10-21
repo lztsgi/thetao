@@ -37,9 +37,9 @@
  * [blpx]   如果用了上面的bl参数,对保留标识后的名称分组排序,如果没用上面的bl参数单独使用blpx则不起任何作用
  * [blockquic] blockquic=on 阻止; blockquic=off 不阻止
  *
- *** 新增参数（可选）
- * [tag]        开启后：为命中关键词的节点在“编号后”追加标签（默认关闭），例如 #tag=on
- * [tagkw]      标签关键词（大小写不敏感，"|" 分隔，默认：流媒体|AI）
+ *** 新增参数（可选，不启用不影响旧逻辑）
+ * [tag]        打开后：命中关键词的节点在最终编号后追加标签（默认关闭）
+ * [tagkw]      标签关键词（"|" 分隔，默认：流媒体|AI；会匹配包含关系，如“流媒体解锁”）
  * [tagsep]     多标签拼接分隔符（默认：|）
  * [tagdelim]   基础名与标签连接符（默认：-）
  */
@@ -59,8 +59,8 @@ const nx = inArg.nx || false,
   addflag = inArg.flag || false,
   nm = inArg.nm || false;
 
-// ——新增：标签参数（默认不启用）——
-const tag = inArg.tag || false, // "on" / "true" / 任意真值均可
+// ——新增：标签参数——
+const tag = inArg.tag || false,
   tagkw = inArg.tagkw == undefined ? "流媒体|AI" : decodeURI(inArg.tagkw),
   tagsep = inArg.tagsep == undefined ? "|" : decodeURI(inArg.tagsep),
   tagdelim = inArg.tagdelim == undefined ? "-" : decodeURI(inArg.tagdelim);
@@ -95,7 +95,7 @@ const specialRegex = [
   /IPLC|IEPL|Kern|Edge|Pro|Std|Exp|Biz|Fam|Game|Buy|Zx|LB|Game/,
 ];
 
-// 如需排除“计费”，把 |计费 保留在这里；不需要可删掉
+// 如需排除“计费”，保留 |计费；不需要可去掉
 const nameclear =
   /(套餐|到期|有效|剩余|版本|已用|过期|失联|测试|官方|网址|备用|群|TEST|客服|网站|获取|订阅|流量|机场|下次|官址|联系|邮箱|工单|学术|USE|USED|TOTAL|EXPIRE|EMAIL|计费)/i;
 
@@ -149,21 +149,46 @@ const rurekey = {
 };
 
 let GetK = false, AMK = []
-function ObjKA(i) {
-  GetK = true
-  AMK = Object.entries(i)
+function ObjKA(i) { GetK = true; AMK = Object.entries(i) }
+
+// ===== 新增：稳定键 & 标签映射（不改对象，不挂字段） =====
+function stableKey(x, idx) {
+  // 取尽可能稳定且不会在流程中改变的字段组合
+  const host = x.server || x.add || x.hostname || x.sni || x.host || x.ip || x.address || "";
+  const port = x.port || x.server_port || x.serverPort || "";
+  const id   = x.uuid || x.id || x.password || x.ps || x.path || "";
+  // 如果都缺失，也拼上 idx 兜底（顺序通常在过滤前后仍可对应多数场景）
+  return [host, port, id, idx].join("||");
+}
+
+function buildTagMap(list) {
+  const m = new Map();
+  if (!tag) return m;
+  const kws = String(tagkw).split("|").filter(Boolean);
+  list.forEach((e, i) => {
+    const raw = e.name || "";
+    const hits = [];
+    kws.forEach(k => {
+      try {
+        const re = new RegExp(k, "i"); // 模糊/包含匹配；“流媒体解锁”可命中“流媒体”
+        if (re.test(raw)) hits.push(k);
+      } catch (_) {
+        if (raw.toLowerCase().includes(String(k).toLowerCase())) hits.push(k);
+      }
+    });
+    if (hits.length) m.set(stableKey(e, i), hits.join(tagsep));
+  });
+  return m;
 }
 
 function operator(pro) {
+  // 先构建“原始名 -> 标签”的映射（用稳定键）
+  const tagMap = buildTagMap(pro);
+
   const Allmap = {};
   const outList = getList(outputName);
-  let inputList,
-    retainKey = "";
-  if (inname !== "") {
-    inputList = [getList(inname)];
-  } else {
-    inputList = [ZH, FG, QC, EN];
-  }
+  let inputList, retainKey = "";
+  if (inname !== "") inputList = [getList(inname)]; else inputList = [ZH, FG, QC, EN];
 
   inputList.forEach((arr) => {
     arr.forEach((value, valueIndex) => {
@@ -188,119 +213,67 @@ function operator(pro) {
   pro.forEach((e) => {
     let bktf = false, ens = e.name;
 
-    // ——记录命中的标签关键词（基于原始名 ens）——
-    if (tag) {
-      const kws = tagkw.split("|").filter(Boolean);
-      const hits = [];
-      kws.forEach(k => {
-        try {
-          const re = new RegExp(k, "i");
-          if (re.test(ens)) hits.push(k);
-        } catch (err) {
-          if (ens.toLowerCase().includes(String(k).toLowerCase())) hits.push(k);
-        }
-      });
-      if (hits.length) e.__suffix = hits.join(tagsep); // 供 jxh() 在编号后拼接
-    }
-
     // 预处理 防止预判或遗漏
     Object.keys(rurekey).forEach((ikey) => {
       if (rurekey[ikey].test(e.name)) {
         e.name = e.name.replace(rurekey[ikey], ikey);
         if (BLKEY) {
-          bktf = true
-          let BLKEY_REPLACE = "",
-          re = false;
+          bktf = true;
+          let BLKEY_REPLACE = "", re = false;
           BLKEYS.forEach((i) => {
             if (i.includes(">") && ens.includes(i.split(">")[0])) {
-              if (rurekey[ikey].test(i.split(">")[0])) {
-                e.name += " " + i.split(">")[0]
-              }
-              if (i.split(">")[1]) {
-                BLKEY_REPLACE = i.split(">")[1];
-                re = true;
-              }
+              if (rurekey[ikey].test(i.split(">")[0])) { e.name += " " + i.split(">")[0] }
+              if (i.split(">")[1]) { BLKEY_REPLACE = i.split(">")[1]; re = true; }
             } else {
-              if (ens.includes(i)) {
-                e.name += " " + i
-              }
+              if (ens.includes(i)) { e.name += " " + i }
             }
-            retainKey = re
-              ? BLKEY_REPLACE
-              : BLKEYS.filter((items) => e.name.includes(items));
+            retainKey = re ? BLKEY_REPLACE : BLKEYS.filter((items) => e.name.includes(items));
           });
         }
       }
     });
 
-    if (blockquic == "on") {
-      e["block-quic"] = "on";
-    } else if (blockquic == "off") {
-      e["block-quic"] = "off";
-    } else {
-      delete e["block-quic"];
-    }
+    if (blockquic == "on")      { e["block-quic"] = "on"; }
+    else if (blockquic == "off"){ e["block-quic"] = "off"; }
+    else                        { delete e["block-quic"]; }
 
     // 自定义
     if (!bktf && BLKEY) {
-      let BLKEY_REPLACE = "",
-        re = false;
+      let BLKEY_REPLACE = "", re = false;
       BLKEYS.forEach((i) => {
         if (i.includes(">") && e.name.includes(i.split(">")[0])) {
-          if (i.split(">")[1]) {
-            BLKEY_REPLACE = i.split(">")[1];
-            re = true;
-          }
+          if (i.split(">")[1]) { BLKEY_REPLACE = i.split(">")[1]; re = true; }
         }
       });
-      retainKey = re
-        ? BLKEY_REPLACE
-        : BLKEYS.filter((items) => e.name.includes(items));
+      retainKey = re ? BLKEY_REPLACE : BLKEYS.filter((items) => e.name.includes(items));
     }
 
-    let ikey = "",
-      ikeys = "";
+    let ikey = "", ikeys = "";
     // 保留固定格式 倍率
     if (blgd) {
       regexArray.forEach((regex, index) => {
-        if (regex.test(e.name)) {
-          ikeys = valueArray[index];
-        }
+        if (regex.test(e.name)) { ikeys = valueArray[index]; }
       });
     }
 
     // 正则 匹配倍率
     if (bl) {
-      const match = e.name.match(
-        /((倍率|X|x|×)\D?((\d{1,3}\.)?\d+)\D?)|((\d{1,3}\.)?\d+)(倍|X|x|×)/
-      );
+      const match = e.name.match(/((倍率|X|x|×)\D?((\d{1,3}\.)?\d+)\D?)|((\d{1,3}\.)?\d+)(倍|X|x|×)/);
       if (match) {
         const rev = match[0].match(/(\d[\d.]*)/)[0];
-        if (rev !== "1") {
-          const newValue = rev + "×";
-          ikey = newValue;
-        }
+        if (rev !== "1") { ikey = rev + "×"; }
       }
     }
 
     !GetK && ObjKA(Allmap)
-    // 匹配 Allkey 地区
-    const findKey = AMK.find(([key]) =>
-      e.name.includes(key)
-    )
+    const findKey = AMK.find(([key]) => e.name.includes(key))
 
-    let firstName = "",
-      nNames = "";
+    let firstName = "", nNames = "";
+    if (nf) { firstName = FNAME; } else { nNames = FNAME; }
 
-    if (nf) {
-      firstName = FNAME;
-    } else {
-      nNames = FNAME;
-    }
     if (findKey?.[1]) {
       const findKeyValue = findKey[1];
-      let keyover = [],
-        usflag = "";
+      let keyover = [], usflag = "";
       if (addflag) {
         const index = outList.indexOf(findKeyValue);
         if (index !== -1) {
@@ -313,11 +286,8 @@ function operator(pro) {
         .filter((k) => k !== "");
       e.name = keyover.join(FGF);
     } else {
-      if (nm) {
-        e.name = FNAME + FGF + e.name;
-      } else {
-        e.name = null;
-      }
+      if (nm) { e.name = FNAME + FGF + e.name; }
+      else { e.name = null; }
     }
   });
 
@@ -326,7 +296,17 @@ function operator(pro) {
   jxh(pro);
   numone && oneP(pro);
 
-  // 这里不再二次追加标签（已在 jxh 中拼接到编号后）
+  // ===== 最终一步：按稳定键追加标签到编号后 =====
+  if (tag) {
+    pro.forEach((e, i) => {
+      const k = stableKey(e, i);
+      const suf = tagMap.get(k);
+      if (suf) {
+        e.name = `${e.name}${tagdelim}${suf}`;
+      }
+    });
+  }
+
   blpx && (pro = fampx(pro));
   key && (pro = pro.filter((e) => !keyb.test(e.name)));
   return pro;
@@ -335,56 +315,11 @@ function operator(pro) {
 // prettier-ignore
 function getList(arg) { switch (arg) { case 'us': return EN; case 'gq': return FG; case 'quan': return QC; default: return ZH; }}
 
-// ——修改：在编号时，就把 __suffix（若存在）拼接到编号后面——
 // prettier-ignore
-function jxh(e) {
-  const n = e.reduce((e, n) => {
-    const t = e.find((e2) => e2.name === n.name);
-    const suff = n.__suffix ? String(n.__suffix) : "";
-    if (t) {
-      t.count++;
-      const num = t.count.toString().padStart(2, "0");
-      const finalName = suff ? `${n.name}${XHFGF}${num}${tagdelim}${suff}` : `${n.name}${XHFGF}${num}`;
-      t.items.push({ ...n, name: finalName });
-    } else {
-      const num = "01";
-      const finalName = suff ? `${n.name}${XHFGF}${num}${tagdelim}${suff}` : `${n.name}${XHFGF}${num}`;
-      e.push({ name: n.name, count: 1, items: [{ ...n, name: finalName }] });
-    }
-    return e;
-  }, []);
-  const t=(typeof Array.prototype.flatMap==='function'?n.flatMap((e) => e.items):n.reduce((acc, e) => acc.concat(e.items),[]));
-  e.splice(0, e.length, ...t);
-  return e;
-}
+function jxh(e) { const n = e.reduce((e, n) => { const t = e.find((e) => e.name === n.name); if (t) { t.count++; t.items.push({ ...n, name: `${n.name}${XHFGF}${t.count.toString().padStart(2, "0")}`, }); } else { e.push({ name: n.name, count: 1, items: [{ ...n, name: `${n.name}${XHFGF}01` }], }); } return e; }, []);const t=(typeof Array.prototype.flatMap==='function'?n.flatMap((e) => e.items):n.reduce((acc, e) => acc.concat(e.items),[])); e.splice(0, e.length, ...t); return e;}
 
 // prettier-ignore
-function oneP(e) {
-  const t = e.reduce((e2, t2) => {
-    const n = t2.name.replace(/[^A-Za-z0-9\u00C0-\u017F\u4E00-\u9FFF]+\d+(-.*)?$/, ""); // 允许有“-标签”尾巴
-    if (!e2[n]) { e2[n] = []; }
-    e2[n].push(t2);
-    return e2;
-  }, {});
-  for (const e3 in t) {
-    if (t[e3].length === 1 && /01(-.*)?$/.test(t[e3][0].name)) {
-      t[e3][0].name = t[e3][0].name.replace(/([^.]?)01(-.*)?$/, (_, p1) => (p1 ? "" : "") + t[e3][0].name.replace(/.*?01(-.*)?$/, (m) => m.replace("01", "")));
-      // 上面写法尽量不影响你原本去“01”的兼容性；如有需要可简化为：
-      // t[e3][0].name = t[e3][0].name.replace(/01(-.*)?$/, (m) => m.replace("01",""));
-    }
-  }
-  return e;
-}
+function oneP(e) { const t = e.reduce((e, t) => { const n = t.name.replace(/[^A-Za-z0-9\u00C0-\u017F\u4E00-\u9FFF]+\d+$/, ""); if (!e[n]) { e[n] = []; } e[n].push(t); return e; }, {}); for (const e in t) { if (t[e].length === 1 && t[e][0].name.endsWith("01")) { t[e][0].name= t[e][0].name.replace(/[^.]01/, "") } } return e; }
 
 // prettier-ignore
-function fampx(pro) {
-  const wis = []; const wnout = [];
-  for (const proxy of pro) {
-    const fan = specialRegex.some((regex) => regex.test(proxy.name));
-    if (fan) { wis.push(proxy); } else { wnout.push(proxy); }
-  }
-  const sps = wis.map((proxy) => specialRegex.findIndex((regex) => regex.test(proxy.name)) );
-  wis.sort( (a, b) => sps[wis.indexOf(a)] - sps[wis.indexOf(b)] || a.name.localeCompare(b.name) );
-  wnout.sort((a, b) => pro.indexOf(a) - pro.indexOf(b));
-  return wnout.concat(wis);
-}
+function fampx(pro) { const wis = []; const wnout = []; for (const proxy of pro) { const fan = specialRegex.some((regex) => regex.test(proxy.name)); if (fan) { wis.push(proxy); } else { wnout.push(proxy); } } const sps = wis.map((proxy) => specialRegex.findIndex((regex) => regex.test(proxy.name)) ); wis.sort( (a, b) => sps[wis.indexOf(a)] - sps[wis.indexOf(b)] || a.name.localeCompare(b.name) ); wnout.sort((a, b) => pro.indexOf(a) - pro.indexOf(b)); return wnout.concat(wis);}
