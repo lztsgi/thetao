@@ -37,8 +37,8 @@
  * [blpx]   如果用了上面的bl参数,对保留标识后的名称分组排序,如果没用上面的bl参数单独使用blpx则不起任何作用
  * [blockquic] blockquic=on 阻止; blockquic=off 不阻止
  *
- *** 新增参数（可选）
- * [tag]        开启后：为命中关键词的节点在“编号后”追加标签（默认关闭），例如 #tag=on
+ *** 新增参数（可选，不开启不影响原逻辑）
+ * [tag]        打开后为命中关键词的节点在最终名称后追加标签（默认关闭），如 #tag=on
  * [tagkw]      标签关键词（大小写不敏感，"|" 分隔，默认：流媒体|AI）
  * [tagsep]     多标签拼接分隔符（默认：|）
  * [tagdelim]   基础名与标签连接符（默认：-）
@@ -59,8 +59,8 @@ const nx = inArg.nx || false,
   addflag = inArg.flag || false,
   nm = inArg.nm || false;
 
-// ——新增：标签参数（默认不启用）——
-const tag = inArg.tag || false, // "on" / "true" / 任意真值均可
+// ——新增：标签参数（默认不启用，启用时才生效）——
+const tag = inArg.tag || false, // 开关：true/false 或 任意真值
   tagkw = inArg.tagkw == undefined ? "流媒体|AI" : decodeURI(inArg.tagkw),
   tagsep = inArg.tagsep == undefined ? "|" : decodeURI(inArg.tagsep),
   tagdelim = inArg.tagdelim == undefined ? "-" : decodeURI(inArg.tagdelim);
@@ -95,7 +95,7 @@ const specialRegex = [
   /IPLC|IEPL|Kern|Edge|Pro|Std|Exp|Biz|Fam|Game|Buy|Zx|LB|Game/,
 ];
 
-// 如需排除“计费”，把 |计费 保留在这里；不需要可删掉
+// ——加入了“计费”关键词（若不需要可移除 |计费）——
 const nameclear =
   /(套餐|到期|有效|剩余|版本|已用|过期|失联|测试|官方|网址|备用|群|TEST|客服|网站|获取|订阅|流量|机场|下次|官址|联系|邮箱|工单|学术|USE|USED|TOTAL|EXPIRE|EMAIL|计费)/i;
 
@@ -186,9 +186,9 @@ function operator(pro) {
   const BLKEYS = BLKEY ? BLKEY.split("+") : "";
 
   pro.forEach((e) => {
-    let bktf = false, ens = e.name;
+    let bktf = false, ens = e.name
 
-    // ——记录命中的标签关键词（基于原始名 ens）——
+    // ——新增：记录原始名称里命中的标签关键词（供最终挂载）——
     if (tag) {
       const kws = tagkw.split("|").filter(Boolean);
       const hits = [];
@@ -200,7 +200,7 @@ function operator(pro) {
           if (ens.toLowerCase().includes(String(k).toLowerCase())) hits.push(k);
         }
       });
-      if (hits.length) e.__suffix = hits.join(tagsep); // 供 jxh() 在编号后拼接
+      e._tags = hits; // 临时字段
     }
 
     // 预处理 防止预判或遗漏
@@ -326,7 +326,17 @@ function operator(pro) {
   jxh(pro);
   numone && oneP(pro);
 
-  // 这里不再二次追加标签（已在 jxh 中拼接到编号后）
+  // ——新增：在编号/去01之后再把标签挂到名称后面——
+  if (tag) {
+    pro.forEach(e => {
+      if (Array.isArray(e._tags) && e._tags.length) {
+        const suffix = e._tags.join(tagsep);
+        e.name = `${e.name}${tagdelim}${suffix}`;
+      }
+      delete e._tags;
+    });
+  }
+
   blpx && (pro = fampx(pro));
   key && (pro = pro.filter((e) => !keyb.test(e.name)));
   return pro;
@@ -334,57 +344,9 @@ function operator(pro) {
 
 // prettier-ignore
 function getList(arg) { switch (arg) { case 'us': return EN; case 'gq': return FG; case 'quan': return QC; default: return ZH; }}
-
-// ——修改：在编号时，就把 __suffix（若存在）拼接到编号后面——
 // prettier-ignore
-function jxh(e) {
-  const n = e.reduce((e, n) => {
-    const t = e.find((e2) => e2.name === n.name);
-    const suff = n.__suffix ? String(n.__suffix) : "";
-    if (t) {
-      t.count++;
-      const num = t.count.toString().padStart(2, "0");
-      const finalName = suff ? `${n.name}${XHFGF}${num}${tagdelim}${suff}` : `${n.name}${XHFGF}${num}`;
-      t.items.push({ ...n, name: finalName });
-    } else {
-      const num = "01";
-      const finalName = suff ? `${n.name}${XHFGF}${num}${tagdelim}${suff}` : `${n.name}${XHFGF}${num}`;
-      e.push({ name: n.name, count: 1, items: [{ ...n, name: finalName }] });
-    }
-    return e;
-  }, []);
-  const t=(typeof Array.prototype.flatMap==='function'?n.flatMap((e) => e.items):n.reduce((acc, e) => acc.concat(e.items),[]));
-  e.splice(0, e.length, ...t);
-  return e;
-}
-
+function jxh(e) { const n = e.reduce((e, n) => { const t = e.find((e) => e.name === n.name); if (t) { t.count++; t.items.push({ ...n, name: `${n.name}${XHFGF}${t.count.toString().padStart(2, "0")}`, }); } else { e.push({ name: n.name, count: 1, items: [{ ...n, name: `${n.name}${XHFGF}01` }], }); } return e; }, []);const t=(typeof Array.prototype.flatMap==='function'?n.flatMap((e) => e.items):n.reduce((acc, e) => acc.concat(e.items),[])); e.splice(0, e.length, ...t); return e;}
 // prettier-ignore
-function oneP(e) {
-  const t = e.reduce((e2, t2) => {
-    const n = t2.name.replace(/[^A-Za-z0-9\u00C0-\u017F\u4E00-\u9FFF]+\d+(-.*)?$/, ""); // 允许有“-标签”尾巴
-    if (!e2[n]) { e2[n] = []; }
-    e2[n].push(t2);
-    return e2;
-  }, {});
-  for (const e3 in t) {
-    if (t[e3].length === 1 && /01(-.*)?$/.test(t[e3][0].name)) {
-      t[e3][0].name = t[e3][0].name.replace(/([^.]?)01(-.*)?$/, (_, p1) => (p1 ? "" : "") + t[e3][0].name.replace(/.*?01(-.*)?$/, (m) => m.replace("01", "")));
-      // 上面写法尽量不影响你原本去“01”的兼容性；如有需要可简化为：
-      // t[e3][0].name = t[e3][0].name.replace(/01(-.*)?$/, (m) => m.replace("01",""));
-    }
-  }
-  return e;
-}
-
+function oneP(e) { const t = e.reduce((e, t) => { const n = t.name.replace(/[^A-Za-z0-9\u00C0-\u017F\u4E00-\u9FFF]+\d+$/, ""); if (!e[n]) { e[n] = []; } e[n].push(t); return e; }, {}); for (const e in t) { if (t[e].length === 1 && t[e][0].name.endsWith("01")) {/* const n = t[e][0]; n.name = e;*/ t[e][0].name= t[e][0].name.replace(/[^.]01/, "") } } return e; }
 // prettier-ignore
-function fampx(pro) {
-  const wis = []; const wnout = [];
-  for (const proxy of pro) {
-    const fan = specialRegex.some((regex) => regex.test(proxy.name));
-    if (fan) { wis.push(proxy); } else { wnout.push(proxy); }
-  }
-  const sps = wis.map((proxy) => specialRegex.findIndex((regex) => regex.test(proxy.name)) );
-  wis.sort( (a, b) => sps[wis.indexOf(a)] - sps[wis.indexOf(b)] || a.name.localeCompare(b.name) );
-  wnout.sort((a, b) => pro.indexOf(a) - pro.indexOf(b));
-  return wnout.concat(wis);
-}
+function fampx(pro) { const wis = []; const wnout = []; for (const proxy of pro) { const fan = specialRegex.some((regex) => regex.test(proxy.name)); if (fan) { wis.push(proxy); } else { wnout.push(proxy); } } const sps = wis.map((proxy) => specialRegex.findIndex((regex) => regex.test(proxy.name)) ); wis.sort( (a, b) => sps[wis.indexOf(a)] - sps[wis.indexOf(b)] || a.name.localeCompare(b.name) ); wnout.sort((a, b) => pro.indexOf(a) - pro.indexOf(b)); return wnout.concat(wis);}
