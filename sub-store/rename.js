@@ -33,15 +33,11 @@
  * [bl]     正则匹配保留 [0.1x, x0.2, 6x ,3倍]等标识
  * [nx]     保留1倍率与不显示倍率的
  * [blnx]   只保留高倍率
- * [clear]  清理乱名
+ * [clear]  清理乱名（**已改为默认开启，可用 clear=off 显式关闭**）
  * [blpx]   如果用了上面的bl参数,对保留标识后的名称分组排序,如果没用上面的bl参数单独使用blpx则不起任何作用
  * [blockquic] blockquic=on 阻止; blockquic=off 不阻止
  *
- *** 新增参数（可选，不开启不影响原逻辑）
- * [tag]        打开后为命中关键词的节点在最终名称后追加标签（默认关闭），如 #tag=on
- * [tagkw]      标签关键词（大小写不敏感，"|" 分隔，默认：流媒体|AI）
- * [tagsep]     多标签拼接分隔符（默认：|）
- * [tagdelim]   基础名与标签连接符（默认：-）
+ * 新增：默认检测“流媒体/AI”并在编号后自动追加后缀（示例：香港 01-流媒体、香港 01-AI、香港 01-流媒体|AI）
  */
 
 // const inArg = {'blkey':'iplc+GPT>GPTnewName+NF+IPLC', 'flag':true };
@@ -55,15 +51,16 @@ const nx = inArg.nx || false,
   blnx = inArg.blnx || false,
   numone = inArg.one || false,
   debug = inArg.debug || false,
-  clear = inArg.clear || false,
+
+  // 变更点①：nameclear 默认生效。允许用 clear=off/false/0 关闭
+  clear = (() => {
+    if (inArg.clear === undefined) return true;
+    const v = String(inArg.clear).toLowerCase();
+    return !(v === 'off' || v === 'false' || v === '0');
+  })(),
+
   addflag = inArg.flag || false,
   nm = inArg.nm || false;
-
-// ——新增：标签参数（默认不启用，启用时才生效）——
-const tag = inArg.tag || false, // 开关：true/false 或 任意真值
-  tagkw = inArg.tagkw == undefined ? "流媒体|AI" : decodeURI(inArg.tagkw),
-  tagsep = inArg.tagsep == undefined ? "|" : decodeURI(inArg.tagsep),
-  tagdelim = inArg.tagdelim == undefined ? "-" : decodeURI(inArg.tagdelim);
 
 const FGF = inArg.fgf == undefined ? " " : decodeURI(inArg.fgf),
   XHFGF = inArg.sn == undefined ? " " : decodeURI(inArg.sn),
@@ -81,6 +78,7 @@ const FGF = inArg.fgf == undefined ? " " : decodeURI(inArg.fgf),
   },
   inname = nameMap[inArg.in] || "",
   outputName = nameMap[inArg.out] || "";
+
 // prettier-ignore
 const FG = ['🇭🇰','🇲🇴','🇹🇼','🇯🇵','🇰🇷','🇸🇬','🇺🇸','🇬🇧','🇫🇷','🇩🇪','🇦🇺','🇦🇪','🇦🇫','🇦🇱','🇩🇿','🇦🇴','🇦🇷','🇦🇲','🇦🇹','🇦🇿','🇧🇭','🇧🇩','🇧🇾','🇧🇪','🇧🇿','🇧🇯','🇧🇹','🇧🇴','🇧🇦','🇧🇼','🇧🇷','🇻🇬','🇧🇳','🇧🇬','🇧🇫','🇧🇮','🇰🇭','🇨🇲','🇨🇦','🇨🇻','🇰🇾','🇨🇫','🇹🇩','🇨🇱','🇨🇴','🇰🇲','🇨🇬','🇨🇩','🇨🇷','🇭🇷','🇨🇾','🇨🇿','🇩🇰','🇩🇯','🇩🇴','🇪🇨','🇪🇬','🇸🇻','🇬🇶','🇪🇷','🇪🇪','🇪🇹','🇫🇯','🇫🇮','🇬🇦','🇬🇲','🇬🇪','🇬🇭','🇬🇷','🇬🇱','🇬🇹','🇬🇳','🇬🇾','🇭🇹','🇭🇳','🇭🇺','🇮🇸','🇮🇳','🇮🇩','🇮🇷','🇮🇶','🇮🇪','🇮🇲','🇮🇱','🇮🇹','🇨🇮','🇯🇲','🇯🇴','🇰🇿','🇰🇪','🇰🇼','🇰🇬','🇱🇦','🇱🇻','🇱🇧','🇱🇸','🇱🇷','🇱🇾','🇱🇹','🇱🇺','🇲🇰','🇲🇬','🇲🇼','🇲🇾','🇲🇻','🇲🇱','🇲🇹','🇲🇷','🇲🇺','🇲🇽','🇲🇩','🇲🇨','🇲🇳','🇲🇪','🇲🇦','🇲🇿','🇲🇲','🇳🇦','🇳🇵','🇳🇱','🇳🇿','🇳🇮','🇳🇪','🇳🇬','🇰🇵','🇳🇴','🇴🇲','🇵🇰','🇵🇦','🇵🇾','🇵🇪','🇵🇭','🇵🇹','🇵🇷','🇶🇦','🇷🇴','🇷🇺','🇷🇼','🇸🇲','🇸🇦','🇸🇳','🇷🇸','🇸🇱','🇸🇰','🇸🇮','🇸🇴','🇿🇦','🇪🇸','🇱🇰','🇸🇩','🇸🇷','🇸🇿','🇸🇪','🇨🇭','🇸🇾','🇹🇯','🇹🇿','🇹🇭','🇹🇬','🇹🇴','🇹🇹','🇹🇳','🇹🇷','🇹🇲','🇻🇮','🇺🇬','🇺🇦','🇺🇾','🇺🇿','🇻🇪','🇻🇳','🇾🇪','🇿🇲','🇿🇼','🇦🇩','🇷🇪','🇵🇱','🇬🇺','🇻🇦','🇱🇮','🇨🇼','🇸🇨','🇦🇶','🇬🇮','🇨🇺','🇫🇴','🇦🇽','🇧🇲','🇹🇱']
 // prettier-ignore
@@ -94,11 +92,8 @@ const specialRegex = [
   /(\d\.)?\d+×/,
   /IPLC|IEPL|Kern|Edge|Pro|Std|Exp|Biz|Fam|Game|Buy|Zx|LB|Game/,
 ];
-
-// ——加入了“计费”关键词（若不需要可移除 |计费）——
 const nameclear =
-  /(套餐|到期|有效|剩余|版本|已用|过期|失联|测试|官方|网址|备用|群|TEST|客服|网站|获取|订阅|流量|机场|下次|官址|联系|邮箱|工单|学术|USE|USED|TOTAL|EXPIRE|EMAIL|计费)/i;
-
+  /(计费|套餐|到期|有效|剩余|版本|已用|过期|失联|测试|官方|网址|备用|群|TEST|客服|网站|获取|订阅|流量|机场|下次|官址|联系|邮箱|工单|学术|USE|USED|TOTAL|EXPIRE|EMAIL)/i;
 // prettier-ignore
 const regexArray=[/ˣ²/, /ˣ³/, /ˣ⁴/, /ˣ⁵/, /ˣ⁶/, /ˣ⁷/, /ˣ⁸/, /ˣ⁹/, /ˣ¹⁰/, /ˣ²⁰/, /ˣ³⁰/, /ˣ⁴⁰/, /ˣ⁵⁰/, /IPLC/i, /IEPL/i, /核心/, /边缘/, /高级/, /标准/, /实验/, /商宽/, /家宽/, /游戏|game/i, /购物/, /专线/, /LB/, /cloudflare/i, /\budp\b/i, /\bgpt\b/i,/udpn\b/];
 // prettier-ignore
@@ -109,6 +104,10 @@ const keya =
   /港|Hong|HK|新加坡|SG|Singapore|日本|Japan|JP|美国|United States|US|韩|土耳其|TR|Turkey|Korea|KR|🇸🇬|🇭🇰|🇯🇵|🇺🇸|🇰🇷|🇹🇷/i;
 const keyb =
   /(((1|2|3|4)\d)|(香港|Hong|HK) 0[5-9]|((新加坡|SG|Singapore|日本|Japan|JP|美国|United States|US|韩|土耳其|TR|Turkey|Korea|KR) 0[3-9]))/i;
+
+// 新增：检测“流媒体/AI”的正则（对原始名检测）
+const STREAM_REGEX = /流媒体/i;
+const AI_REGEX = /\bAI\b/i;
 
 const rurekey = {
   GB: /UK/g,
@@ -175,7 +174,7 @@ function operator(pro) {
     pro = pro.filter((res) => {
       const resname = res.name;
       const shouldKeep =
-        !(clear && nameclear.test(resname)) &&
+        !(clear && nameclear.test(resname)) &&                // 变更点②：clear 默认 true 时会生效
         !(nx && namenx.test(resname)) &&
         !(blnx && !nameblnx.test(resname)) &&
         !(key && !(keya.test(resname) && /2|4|6|7/i.test(resname)));
@@ -186,53 +185,38 @@ function operator(pro) {
   const BLKEYS = BLKEY ? BLKEY.split("+") : "";
 
   pro.forEach((e) => {
+    // 记录原始名称用于流媒体/AI检测
+    const originalName = e.name;
+
     let bktf = false, ens = e.name
-
-    // ——新增：记录原始名称里命中的标签关键词（供最终挂载）——
-    if (tag) {
-      const kws = tagkw.split("|").filter(Boolean);
-      const hits = [];
-      kws.forEach(k => {
-        try {
-          const re = new RegExp(k, "i");
-          if (re.test(ens)) hits.push(k);
-        } catch (err) {
-          if (ens.toLowerCase().includes(String(k).toLowerCase())) hits.push(k);
-        }
-      });
-      e._tags = hits; // 临时字段
-    }
-
     // 预处理 防止预判或遗漏
     Object.keys(rurekey).forEach((ikey) => {
       if (rurekey[ikey].test(e.name)) {
         e.name = e.name.replace(rurekey[ikey], ikey);
-        if (BLKEY) {
-          bktf = true
-          let BLKEY_REPLACE = "",
-          re = false;
-          BLKEYS.forEach((i) => {
-            if (i.includes(">") && ens.includes(i.split(">")[0])) {
-              if (rurekey[ikey].test(i.split(">")[0])) {
-                e.name += " " + i.split(">")[0]
-              }
-              if (i.split(">")[1]) {
-                BLKEY_REPLACE = i.split(">")[1];
-                re = true;
-              }
-            } else {
-              if (ens.includes(i)) {
-                e.name += " " + i
-              }
+      if (BLKEY) {
+        bktf = true
+        let BLKEY_REPLACE = "",
+        re = false;
+      BLKEYS.forEach((i) => {
+        if (i.includes(">") && ens.includes(i.split(">")[0])) {
+          if (rurekey[ikey].test(i.split(">")[0])) {
+              e.name += " " + i.split(">")[0]
             }
-            retainKey = re
-              ? BLKEY_REPLACE
-              : BLKEYS.filter((items) => e.name.includes(items));
-          });
+          if (i.split(">")[1]) {
+            BLKEY_REPLACE = i.split(">")[1];
+            re = true;
+          }
+        } else {
+          if (ens.includes(i)) {
+             e.name += " " + i
+            }
         }
+        retainKey = re
+        ? BLKEY_REPLACE
+        : BLKEYS.filter((items) => e.name.includes(items));
+      });}
       }
     });
-
     if (blockquic == "on") {
       e["block-quic"] = "on";
     } else if (blockquic == "off") {
@@ -288,7 +272,7 @@ function operator(pro) {
     const findKey = AMK.find(([key]) =>
       e.name.includes(key)
     )
-
+    
     let firstName = "",
       nNames = "";
 
@@ -319,26 +303,31 @@ function operator(pro) {
         e.name = null;
       }
     }
+
+    // 变更点③：保存“流媒体/AI”标记（基于原始名判断，不影响其他流程）
+    e.__hasStream = STREAM_REGEX.test(originalName);
+    e.__hasAI = AI_REGEX.test(originalName);
   });
 
   pro = pro.filter((e) => e.name !== null);
-
   jxh(pro);
   numone && oneP(pro);
-
-  // ——新增：在编号/去01之后再把标签挂到名称后面——
-  if (tag) {
-    pro.forEach(e => {
-      if (Array.isArray(e._tags) && e._tags.length) {
-        const suffix = e._tags.join(tagsep);
-        e.name = `${e.name}${tagdelim}${suffix}`;
-      }
-      delete e._tags;
-    });
-  }
-
   blpx && (pro = fampx(pro));
   key && (pro = pro.filter((e) => !keyb.test(e.name)));
+
+  // 变更点④：在编号之后统一追加后缀（-流媒体/-AI/-流媒体|AI）
+  pro.forEach((e) => {
+    const tags = [];
+    if (e.__hasStream) tags.push('流媒体');
+    if (e.__hasAI) tags.push('AI');
+    if (tags.length > 0) {
+      e.name = `${e.name}-${tags.join('|')}`;
+    }
+    // 清理临时属性
+    delete e.__hasStream;
+    delete e.__hasAI;
+  });
+
   return pro;
 }
 
