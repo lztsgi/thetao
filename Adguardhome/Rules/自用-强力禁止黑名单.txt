@@ -1,0 +1,50 @@
+! --- 强力禁止黑名单 ---
+! --- Block Qihoo 360 (核心域名) ---
+||360.cn^
+||www.360.cn^
+||so.com^
+||360safe.com^
+||360totalsecurity.com^
+||qhimg.com^
+||qihucdn.com^
+! --- Block 常见子域 ---
+||*.360.com^
+||*.360.cn^
+||*.so.com^
+||*.360safe.com^
+||*.qhimg.com^
+||*.qihucdn.com^
+||*.360totalsecurity.com^
+! --- Block 国际版 360 Total Security CDN ---
+||*.360os.com^
+||*.360os.cn^
+! --- Block 360 浏览器、应用相关域 ---
+||browser.360.cn^
+||ext.chrome.360.cn^
+||se.360.cn^
+||*.se.360.cn^
+! --- Block 360 手机助手等（按需开启） ---
+||app.360.cn^
+||sj.360.cn^
+||m.360.cn^
+! --- Block 360 影视（如果你不看 360 影视） ---
+||360kan.com^
+||*.360kan.com^
+! ==== 强力禁止：搜狗全家桶（搜索/输入法/账号/CDN等）====
+! 主域（这一条就已覆盖所有 *.sogou.com）
+||sogou.com^
+! 可能使用的国内域
+||sogou.cn^
+! 搜狗 CDN（非常关键，否则很多资源还能加载）
+||sogoucdn.com^
+! soso 现在就是搜狗搜索
+||soso.com^
+! 官方协议中出现的联系邮箱域（可选，但你要“强力”就加上）
+||sogou-inc.com^
+! （可选）如果你希望“手机端搜狗输入法/搜狗搜索移动端”也更彻底
+||m.sogou.com^
+||shouji.sogou.com^
+||pinyin.sogou.com^
+||shurufa.sogou.com^
+||account.sogou.com^
+||ime.sogou.com^
