@@ -1,0 +1,266 @@
+# 注意规则在满足自己需求情况下，尽量做到精简，不要过度复杂，以免影响性能。
+# 机场订阅
+# 代理提供者配置（定义不同的代理来源）
+proxy-providers:
+  # "Airport1" 是示例代理提供者，可以替换为实际的代理订阅 URL
+  Airport1:
+    url: "机场订阅"  # 代理订阅的 URL 地址
+    type: http  # 连接类型，可以是 http、socks 等
+    interval: 86400  # 刷新订阅的时间间隔，单位为秒（86400 秒为 24 小时）
+    health-check:  # 健康检查配置，用于检测代理是否正常
+      enable: true  # 是否启用健康检查
+      url: https://www.gstatic.com/generate_204  # 用于检查代理是否可用的 URL,自从测延迟
+      interval: 300  # 执行健康检查的时间间隔，单位为秒（300 秒为 5 分钟）
+    proxy: 直连  # 设置拉取机场节点方式，默认代理为直连（不使用代理）
+    # header:           # 请求头独立配置部分
+    #   User-Agent:     # 告诉机场需要什么样的配置文件
+    #  - "Clash"
+    #  - "Mihomo"
+    #  - "Clash.meta"  # 一般默认
+    #override:           #额外参数
+    #  udp: ture
+    #  down: "50 Mbps"  #下载速度限制参数
+    #  up: "10 Mbps"    #上传速度限制参数
+    #  skip-cert-verify: ture    #跳过证书验证-一般用于自建节点自签证书
+
+# 请求头：全局生效
+# global-ua： clash.meta
+
+# 零散节点信息配置：没有订阅有大量节点专用
+proxies:    # 可以批量转换成订阅放proxy-providers，或者节点按照名字规则放proxies和- {name之间
+  - {name: 直连, type: direct, udp: true}  # 直连节点，类型为 direct（直连），启用 UDP 转发，自建节点专用，千万不要删除
+
+# 全局配置
+port: 7890  # 代理服务器的端口号
+socks-port: 7891  # SOCKS 代理的端口号
+redir-port: 7892  # 重定向代理的端口号
+mixed-port: 7893  # 混合模式端口，支持多种协议
+tproxy-port: 7894  # TProxy 代理的端口号
+allow-lan: true  # 是否允许局域网设备访问
+bind-address: "*"  # 绑定的 IP 地址， "*" 表示绑定所有 IP都能代理
+ipv6: false  # 是否启用 IPv6 支持
+unified-delay: true  # 是否启用统一延迟模式
+tcp-concurrent: true  # 是否支持并发 TCP 连接
+log-level: warning  # 日志等级（可选：debug, info, warning, error）
+find-process-mode: 'off'  # 是否启用进程查找模式（关闭）
+# interface-name: en0  # 可选，指定网卡接口名称
+global-client-fingerprint: chrome  # 全局客户端指纹、伪装（传输时模拟浏览器指纹，通常用 chrome）
+keep-alive-idle: 600  # Keep-Alive 空闲超时时间，单位为秒
+keep-alive-interval: 15  # Keep-Alive 的发送间隔，单位为秒
+disable-keep-alive: false  # 是否禁用 Keep-Alive
+profile:
+  store-selected: true  # 是否存储已选择的代理（节点代理选择好记忆）
+  store-fake-ip: true  # 是否存储伪造的 IP
+
+# geo数据库内核默认参数就有。没必要这里自定义，直接在下面启用规则了
+# geodata-loader: memconservative/standard   # 数据库类型  小内存模型专用/标准内存专用
+# geodata-mode: true/false                   # 数据库模式  true：用的下面是geoip数据库/false用的是mmdb数据库
+#自定义 geodata url
+#geox-url:  # 数据库下载链接
+#  geoip: "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/geoip.dat"
+#  geosite: "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/geosite.dat"
+#  mmdb: "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/geoip.metadb"
+
+geo-auto-update: false # 是否自动更新 geodata
+geo-update-interval: 24 # 更新间隔，单位：小时
+
+
+# 控制面板配置
+external-controller: 0.0.0.0:9090  # 外部控制面板的地址和端口，设置成127.0.0.1只能本机访问，除非做了外网映射，为了安全只能本机
+secret: ""  # 控制面板的密钥，确保安全
+external-ui: "/etc/mihomo/run/ui"  # 外部 UI 文件存放路径
+external-ui-name: zashboard  # 外部 UI 名称
+external-ui-url: "https://github.com/Zephyruso/zashboard/archive/refs/heads/gh-pages.zip"  # 外部 UI 下载链接
+
+# 嗅探器配置（其实个模块作用不大，可有可无），用于流量嗅探和过滤，即拦截和分析通过代理服务器的网络流量。它可以用于监测、过滤特定的流量类型，并对数据包进行深度分析。
+# 作用：在路由规则匹配时候如果规则是ip能用某种规则匹配出对应域名，匹配更精准
+# 优点：
+# 	可以精准地筛选和拦截特定流量，提升流量管理和过滤的灵活性。
+# 	支持对常见协议（HTTP、TLS、QUIC）进行细粒度的流量监控。
+# 	强制嗅探和排除嗅探的域名功能，能保证流量的精确控制和隐私保护。
+# 缺点：
+# 	开启嗅探功能可能会对系统性能产生影响，尤其是大量流量的情况下。
+# 	对于加密流量（如 HTTPS），嗅探的内容可能会受到加密的限制，无法直接解析全部数据。
+sniffer:
+  enable: true  # 是否启用嗅探功能
+  sniff:  # 嗅探的协议设置
+    HTTP:
+      ports: [80, 8080-8880]  # 嗅探 HTTP 协议的端口范围
+      override-destination: true  # 是否覆盖目标地址
+    TLS:
+      ports: [443, 8443]  # 嗅探 TLS 协议的端口范围
+    QUIC:
+      ports: [443, 8443]  # 嗅探 QUIC 协议的端口范围
+  force-domain:  # 强制嗅探的域名
+    - "+.v2ex.com"
+  skip-domain:  # 排除嗅探的域名,跳过对skip-domain列表域名的流量嗅探，即使其端口符合配置。
+    - "rule-set:private_domain,cn_domain"  # 排除私有域名和中国域名
+    - "dlg.io.mi.com"
+    - "+.push.apple.com"
+    - "+.apple.com"
+    - "+.wechat.com"
+    - "+.qpic.cn"
+    - "+.qq.com"
+    - "+.wechatapp.com"
+    - "+.vivox.com"
+    - "+.oray.com"
+    - "+.sunlogin.net"
+    - "+.msftconnecttest.com"
+    - "+.msftncsi.com"
+
+# 入站配置（用于入站代理流量），此模式允许将流量通过虚拟网络接口传递，这种方式非常适合需要处理大量流量或在不同网络环境中使用的场景。
+# 这个模块openclash核niki用不到，但是即使不删除也没关系，程序会自动覆盖
+# 优点：
+# 	能够有效地将流量传输通过虚拟网络接口，适用于需要通过 VPN 或类似机制的代理应用。
+# 	自动路由和自动重定向保证了配置简便，适应多种网络环境。
+# 	DNS 劫持功能可以确保所有流量都使用代理 DNS，避免 DNS 泄漏。
+# 缺点：
+# 	在高流量的场景中，TUN 模式可能导致性能瓶颈，因为所有流量都需要通过虚拟网卡进行转发。
+# 	配置错误时可能导致流量丢失或无法正常路由，尤其是在复杂的网络环境中。
+tun:
+  enable: true  # 是否启用 TUN 模式
+  # TUN 栈类型，可以选择 system/gvisor/mixed
+  stack: mixed  # 设置了使用的 TUN 堆栈类型（system、gvisor 或 mixed），mixed 是一种混合模式，支持更高效的流量处理。
+  dns-hijack: ["any:53", "tcp://any:53"]  # 用于劫持 DNS 请求（dns默认53端口），强制流量使用指定的 DNS 服务器。它常用于绕过 DNS 劫持或将所有 DNS 请求通过代理传输。
+  auto-route: true  # 是否自动路由流量，这对于保证流量的正确转发至关重要。裸核跑mihomo必须要开
+  auto-redirect: true  # 是否自动重定向流量，这对于保证流量的正确转发至关重要。裸核跑mihomo必须要开
+  auto-detect-interface: true  # 是否自动检测网络接口，用于在多网络环境下自动选择最合适的接口。裸核跑mihomo必须要开
+  route-exclude-address-set:  #裸核跑mihomo必须要开，配置防火墙麻烦。就指定以下规则绕过内核
+    - "rule-set:cn_ip"        # 中国大陆ip
+
+# DNS 配置，此模块允许用户自定义 DNS 服务，控制如何解析域名并确保所有流量通过代理。
+# 非常重要模块！！！！！
+# 优点：
+# 	DNS 劫持和伪造 IP功能增强了隐私保护，防止 DNS 泄漏，确保所有流量都经过代理。
+# 	规则支持使得用户能够自定义域名解析规则，灵活地管理 DNS 请求。
+# 	支持指定多个 DNS 服务器，以确保更高的可靠性和速度。
+# 缺点：
+# 	启用伪造 IP 功能可能导致某些网站出现不正确的 IP 解析，从而影响网站的正常访问。
+# 	如果 DNS 配置不当，可能会导致 DNS 请求失败或解析错误，影响上网体验。
+dns:
+  enable: true  # 是否启用 DNS 功能
+  listen: 0.0.0.0:1053  # 设置监听的 IP 和端口，通常使用 1053 端口进行 DNS 请求监听。
+  ipv6: false  # 设置是否支持解析 IPv6 DNS 请求。
+  respect-rules: true  # 本机向解析 DNS 服务器(这模块设置好的nameserver)的请求是否遵循下面规则集，true按规则集，false按直连
+  enhanced-mode: fake-ip  # redir-host或者fake-ip，一般fake-ip模式（设置 DNS 伪造模式，fake-ip 表示通过伪造 IP 地址来绕过 DNS 查询）
+  fake-ip-range: 28.0.0.1/8  # 设置伪造的 IP 地址范围，通常用于避免 DNS 泄漏。
+  fake-ip-filter-mode: blacklist  #  黑名单模式，配置了 DNS 伪造的过滤规则，防止将不必要的域名解析到伪造的 IP。
+  fake-ip-filter:				  #  不启用fake-ip的白名单（就是这列表按redir-host模式），一般fake-ip引起的问题都添加到这里提高兼容性解决。
+    - "rule-set:private_domain,cn_domain"  # 过滤私有域名和中国域名
+    - "+.services.googleapis.cn"           # 谷歌商店
+    - "+.xn--ngstr-lra8j.com"
+    - "time.*.com"                         # 时间相关域名
+    - "+.pool.ntp.org"
+    - "+.ntp.tencent.com"
+    - "+.ntp1.aliyun.com"
+    - "+.ntp.ntsc.ac.cn"
+    - "+.cn.ntp.org.cn"
+  default-nameserver: # 默认的 DNS 服务器，当下面所有解析服务器用了域名服务器解析的时候，就靠这个来解析下面的DNS服务器的域名，所以这个一定要ip
+    - 223.5.5.5
+    - 119.29.29.29 
+  direct-nameserver: # 为解析直连规则设置的DNS服务器，设置后所有定义直连规则所用到解析的服务器就用这个，但是注意！要保证下面一条为false
+    - 223.5.5.5
+    - 119.29.29.29
+  direct-nameserver-follow-policy: false #只有这个为false上面direct-nameserver才生效，这个一定要fasle！！，如果是true，代表直连解析服务器按下面这些规则先走一步
+  proxy-server-nameserver: # 为解析代理节点为域名的情况而设置的DNS服务器，专门用于解析代理节点用了域名的情况，其他没用（不懂的话这个选项设置国内的服务器即可）
+    # - 223.5.5.5
+    # - 119.29.29.29
+    - https://dns.alidns.com/dns-query  
+  #namesercer-policy:    # 为规则集中部分网站或规则指定解析dns服务器
+  # '+.baidu.com': '114.114.114.114' #指定百度DNS服务器
+  # "rule-set:private_domain,cn_domain": #指定这些规则集DNS服务器
+  #    - 223.5.5.5
+  #    - 119.29.29.29
+  nameserver:  # 主要的DNS服务器，所有请求国内网站专用（最重要，必不可少）
+    - 223.5.5.5
+    - 119.29.29.29	
+  #fallback:   #基本已经淘汰，加上会多走一次规则，没必要
+
+# 出站策略配置
+# 锚点必须在引用之前定义，可以集中定义在 YAML 顶部
+pr: &pr {type: select, proxies: [🚀 默认代理, 🔯 香港故转, 🔯 日本故转, ♻️ 香港自动, ♻️ 日本自动, ♻️ 美国自动, ♻️ 自动选择, 🇭🇰 香港节点, 🇯🇵 日本节点, 🇺🇲 美国节点, 🌐 全部节点, 直连]}
+proxy-groups:
+  - {name: 🚀 默认代理, type: select, proxies: [🔯 香港故转, 🔯 日本故转, ♻️ 香港自动, ♻️ 日本自动, ♻️ 美国自动, ♻️ 自动选择, 🇭🇰 香港节点, 🇯🇵 日本节点, 🇺🇲 美国节点, 🌐 全部节点, 直连]}
+  - {name: 📹 YouTube, <<: *pr}  #可在pr后加, icon ""图标源码地址
+  - {name: 🍀 Google, <<: *pr}
+  - {name: 🤖 ChatGPT, <<: *pr}
+  - {name: 👨🏿‍💻 GitHub, <<: *pr}
+  - {name: 🐬 OneDrive, <<: *pr}
+  - {name: 🪟 Microsoft, <<: *pr}
+  - {name: 🎵 TikTok, <<: *pr}
+  - {name: 📲 Telegram, <<: *pr}
+  - {name: 🎥 NETFLIX, <<: *pr}
+  - {name: ✈️ Speedtest, <<: *pr}
+  - {name: 💶 PayPal, <<: *pr}
+  - {name: 🍎 Apple, type: select, proxies: [直连, 🚀 默认代理]}
+  - {name: 🎯 直连, type: select, proxies: [直连, 🚀 默认代理]}
+  - {name: 🐟 漏网之鱼, <<: *pr}
+  - {name: 🇭🇰 香港节点, type: select, include-all: true, filter: "(?i)港|hk|hongkong|hong kong"}  # 通过关键词过滤香港节点
+  - {name: 🇯🇵 日本节点, type: select, include-all: true, filter: "(?i)日|jp|japan"}  # 通过关键词过滤日本节点
+  - {name: 🇺🇲 美国节点, type: select, include-all: true, filter: "(?i)美|us|unitedstates|united states"}  # 通过关键词过滤美国节点
+  - {name: 🔯 香港故转, type: fallback, include-all: true, tolerance: 20, interval: 300, filter: "(?=.*(港|HK|(?i)Hong))^((?!(台|日|韩|新|深|美)).)*$"}
+  - {name: 🔯 日本故转, type: fallback, include-all: true, tolerance: 20, interval: 300, filter: "(?=.*(日|JP|(?i)Japan))^((?!(港|台|韩|新|美)).)*$" }
+  - {name: ♻️ 香港自动, type: url-test, include-all: true, tolerance: 20, interval: 300, filter: "(?=.*(港|HK|(?i)Hong))^((?!(台|日|韩|新|深|美)).)*$"}
+  - {name: ♻️ 日本自动, type: url-test, include-all: true, tolerance: 20, interval: 300, filter: "(?=.*(日|JP|(?i)Japan))^((?!(港|台|韩|新|美)).)*$" }
+  - {name: ♻️ 美国自动, type: url-test, include-all: true, tolerance: 20, interval: 300, filter: "(?=.*(美|US|(?i)States|America))^((?!(港|台|日|韩|新)).)*$"}
+  - {name: ♻️ 自动选择, type: url-test, include-all: true, tolerance: 20, interval: 300, filter: "^((?!(直连)).)*$"}
+  - {name: 🌐 全部节点, type: select, include-all: true}
+  # include-all: true 是所有机场订阅 use: [Airport1,Airport2] 选择指定机场
+
+# 规则匹配配置
+rules: # 域名不发起ip解析，no-resolve禁止ip解析，直接交由节点解析，然后拿回来域名匹配规则是否走代理，防止泄露
+  - DOMAIN-SUFFIX,qichiyu.com,🚀 默认代理
+  - RULE-SET,private_domain,直连
+  - RULE-SET,apple_domain,🍎 Apple
+  - RULE-SET,proxylite,🚀 默认代理
+  - RULE-SET,ai,🤖 ChatGPT
+  - RULE-SET,github_domain,👨🏿‍💻 GitHub
+  - RULE-SET,youtube_domain,📹 YouTube
+  - RULE-SET,google_domain,🍀 Google
+  - RULE-SET,onedrive_domain,🐬 OneDrive
+  - RULE-SET,microsoft_domain,🪟 Microsoft
+  - RULE-SET,tiktok_domain,🎵 TikTok
+  - RULE-SET,speedtest_domain,✈️ Speedtest
+  - RULE-SET,telegram_domain,📲 Telegram
+  - RULE-SET,netflix_domain,🎥 NETFLIX
+  - RULE-SET,paypal_domain,💶 PayPal
+  - RULE-SET,gfw_domain,🚀 默认代理
+  - RULE-SET,geolocation-!cn,🚀 默认代理
+  - RULE-SET,cn_domain,🎯 直连
+  - RULE-SET,google_ip,🍀 Google,no-resolve
+  - RULE-SET,netflix_ip,🎥 NETFLIX,no-resolve
+  - RULE-SET,telegram_ip,📲 Telegram,no-resolve
+  - RULE-SET,cn_ip,🎯 直连 # 这个非常关键，如果加了no-resolve那国内这些网站也会走一道外国解析，不划算，会变慢
+  - MATCH,🐟 漏网之鱼
+
+# 规则集配置
+rule-anchor: #type http 互联网拉取 type file本地拉取 interval 86400 一天更新一次 
+             #behavior: ？？规则集内容都是什么 ipcidr ip domain 域名 classical混合
+             # format: mrs 规则集内容格式二进制 format: text规则集内容格式文本，还可以list yaml
+  ip: &ip {type: http, interval: 86400, behavior: ipcidr, format: mrs}  # IP 地址规则集 互联网拉取
+  domain: &domain {type: http, interval: 86400, behavior: domain, format: mrs}  # 域名规则集
+  class: &class {type: http, interval: 86400, behavior: classical, format: text}  # 经典规则集
+
+rule-providers: 
+  private_domain: { <<: *domain, url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/private.mrs"}
+  proxylite: { <<: *class, url: "https://raw.githubusercontent.com/qichiyuhub/rule/refs/heads/master/ProxyLite.list"}
+  ai: {  <<: *domain, url: "https://github.com/MetaCubeX/meta-rules-dat/raw/refs/heads/meta/geo/geosite/category-ai-chat-!cn.mrs" }
+  youtube_domain: { <<: *domain, url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/youtube.mrs"}
+  google_domain: { <<: *domain, url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/google.mrs"}
+  github_domain: { <<: *domain, url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/github.mrs"}
+  telegram_domain: { <<: *domain, url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/telegram.mrs"}
+  netflix_domain: { <<: *domain, url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/netflix.mrs"}
+  paypal_domain: { <<: *domain, url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/paypal.mrs"}
+  onedrive_domain: { <<: *domain, url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/onedrive.mrs"}
+  microsoft_domain: { <<: *domain, url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/microsoft.mrs"}
+  apple_domain: { <<: *domain, url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/apple-cn.mrs"}
+  speedtest_domain: { <<: *domain, url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/ookla-speedtest.mrs"}
+  tiktok_domain: { <<: *domain, url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/tiktok.mrs"}
+  gfw_domain: { <<: *domain, url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/gfw.mrs"}
+  geolocation-!cn: { <<: *domain, url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/geolocation-!cn.mrs"}
+  cn_domain: { <<: *domain, url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/cn.mrs"}
+  
+  cn_ip: { <<: *ip, url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geoip/cn.mrs"}
+  google_ip: { <<: *ip, url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geoip/google.mrs"}
+  telegram_ip: { <<: *ip, url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geoip/telegram.mrs"}
+  netflix_ip: { <<: *ip, url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geoip/netflix.mrs"}
