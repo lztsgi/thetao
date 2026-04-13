@@ -106,6 +106,7 @@ jobs:
               continue
             fi
 
+            # 提取 IP 规则，导出为纯 CIDR 文本
             grep -vE "^[[:space:]]*(#|!|$|payload:|DOMAIN|GEOIP|PROCESS-NAME|SRC-PORT|DST-PORT|MATCH)" "$SRC_FILE" | \
             sed -E 's/^[[:space:]]*-[[:space:]]+//' | \
             sed -E 's/^\|\|//g' | \
@@ -117,46 +118,92 @@ jobs:
             grep -E "^(([0-9]{1,3}\.){3}[0-9]{1,3}/[0-9]{1,2}|([0-9a-fA-F]{0,4}:){2,7}[0-9a-fA-F]{0,4}/[0-9]{1,3})$" | \
             sort -u > "$IP_TMP" || true
 
-            grep -vE "^[[:space:]]*(IP-CIDR|IP-CIDR6|IP-ASN|SRC-IP-CIDR|#|!|$|payload:|GEOIP|PROCESS-NAME|SRC-PORT|DST-PORT|MATCH)" "$SRC_FILE" | \
-            sed -E 's/^[[:space:]]*-[[:space:]]+//' | \
-            sed -E 's/^\|\|//g' | \
-            sed -E 's/\^$//g' | \
-            sed -E "s/^['\"+]?//; s/['\"+]?$//" | \
-            awk -F',' '
-            {
-              gsub(/[[:space:]]/, "", $1)
-              gsub(/[[:space:]]/, "", $2)
-              type=toupper($1)
-              val=$2
+            # 提取域名规则，导出为 Mihomo list 风格：
+            # DOMAIN-SUFFIX => +.example.com
+            # DOMAIN/FULL    => example.com
+            awk '
+            function trim(s) {
+              gsub(/^[ \t\r\n]+|[ \t\r\n]+$/, "", s)
+              return s
+            }
+            function emit_suffix(v) {
+              v = trim(v)
+              gsub(/^'\''|'\''$/, "", v)
+              gsub(/^"|"$/, "", v)
+              gsub(/^\+\./, "", v)
+              gsub(/^\./, "", v)
+              gsub(/^\*\./, "", v)
+              if (v != "") print "+." v
+            }
+            function emit_domain(v) {
+              v = trim(v)
+              gsub(/^'\''|'\''$/, "", v)
+              gsub(/^"|"$/, "", v)
+              gsub(/^\+\./, "", v)
+              gsub(/^\./, "", v)
+              gsub(/^\*\./, "", v)
+              if (v != "") print v
+            }
 
-              if (type=="DOMAIN-SUFFIX" && val!="") {
-                print val
-                print "." val
+            {
+              line = $0
+              gsub(/\r/, "", line)
+              line = trim(line)
+
+              if (line == "" || line ~ /^#/ || line ~ /^!/ || line == "payload:") next
+              sub(/^[[:space:]]*-[[:space:]]+/, "", line)
+              line = trim(line)
+
+              if (line ~ /^(IP-CIDR|IP-CIDR6|IP-ASN|SRC-IP-CIDR|GEOIP|PROCESS-NAME|SRC-PORT|DST-PORT|MATCH)(,|$)/) next
+
+              if (line ~ /^DOMAIN-SUFFIX,/) {
+                split(line, a, ",")
+                emit_suffix(a[2])
                 next
               }
-              if ((type=="DOMAIN" || type=="FULL" || type=="FULL:") && val!="") {
-                print val
+
+              if (line ~ /^(HOST-SUFFIX|host-suffix),/) {
+                split(line, a, ",")
+                emit_suffix(a[2])
                 next
               }
-              if (type=="DOMAIN-KEYWORD" || type=="DOMAIN-REGEX") next
-              if (tolower($1) ~ /^domain:/ && $2=="") {
-                sub(/^domain:/, "", $1)
-                print $1
+
+              if (line ~ /^(DOMAIN|HOST|host|FULL|FULL:),/) {
+                split(line, a, ",")
+                emit_domain(a[2])
                 next
               }
-              if ($2=="") {
-                print $1
+
+              if (line ~ /^(DOMAIN-KEYWORD|DOMAIN-REGEX|HOST-KEYWORD|host-keyword|URL-REGEX),/) next
+
+              if (line ~ /^\|\|/) {
+                sub(/^\|\|/, "", line)
+                sub(/\^$/, "", line)
+                emit_suffix(line)
+                next
+              }
+
+              if (line ~ /^\+\./) {
+                emit_suffix(line)
+                next
+              }
+
+              if (line ~ /^\./) {
+                emit_suffix(line)
+                next
+              }
+
+              if (line ~ /^[A-Za-z0-9_-]+:/) {
+                next
+              }
+
+              if (line !~ /,/ && line !~ /\//) {
+                emit_domain(line)
                 next
               }
             }
-            ' | \
-            sed -E 's/^domain://g' | \
-            sed -E 's/^\.\.+/./g' | \
-            sed -E 's/^\*\.?/./g' | \
-            sed -E 's/^\+\././g' | \
-            cut -d',' -f1 | \
+            ' "$SRC_FILE" | \
             sed 's/[[:space:]]//g' | \
-            grep -vE "^(no-resolve|force-remote-dns|keyword:|regexp:|\*|.*\*.*\*)$" | \
             grep -v '^$' | \
             sort -u > "$DOMAIN_TMP" || true
 
@@ -176,7 +223,7 @@ jobs:
             fi
 
             if [[ -s "$DOMAIN_TMP" ]] && grep -q "[^[:space:]]" "$DOMAIN_TMP"; then
-              DOMAIN_TXT="$TMP_GEOSITE/${FILENAME}.txt"
+              DOMAIN_TXT="$TMP_GEOSITE/${FILENAME}.list"
               DOMAIN_MRS="$TMP_GEOSITE/${FILENAME}.mrs"
               cp "$DOMAIN_TMP" "$DOMAIN_TXT"
 
