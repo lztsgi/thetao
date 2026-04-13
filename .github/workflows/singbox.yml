@@ -1,11 +1,6 @@
 name: singbox
 
 on:
-  push:
-    branches: [ main ]
-    paths:
-      - '.github/workflows/singbox.yml'
-      - 'singbox/singbox.txt'
   workflow_dispatch:
   schedule:
     - cron: '0 20 * * *'
@@ -343,21 +338,20 @@ jobs:
               print(f"geosite: {p.name}")
           EOF
 
-          - name: Commit and push config
-            shell: bash
-            run: |
-              set -Eeuo pipefail
-              git config --global user.email "action@github.com"
-              git config --global user.name "GitHub Action"
-          
-              git add -A ./singbox/rule-set
-          
-              if git diff --staged --quiet; then
-                echo "No changes to commit"
-                exit 0
-              fi
-          
-              git commit -m "Update sing-box rules"
-          
-              git pull --rebase origin main
-              git push origin HEAD:main
+      - name: Commit and push config
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config --global user.email "action@github.com"
+          git config --global user.name "GitHub Action"
+
+          git add -A ./singbox/rule-set
+
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+
+          git commit -m "Update sing-box rules"
+          git pull --rebase origin main
+          git push origin HEAD:main
