@@ -47,7 +47,6 @@ jobs:
           TMP_ROOT="mihomo/.tmp_rule_set"
           TMP_GEOSITE="$TMP_ROOT/geosite"
           TMP_GEOIP="$TMP_ROOT/geoip"
-          TMP_CLASSICAL="$TMP_ROOT/classical"
           CACHE_DIR="mihomo/.cache"
 
           if [[ ! -f "$INPUT_FILE" ]]; then
@@ -56,7 +55,7 @@ jobs:
           fi
 
           rm -rf "$TMP_ROOT" "$CACHE_DIR"
-          mkdir -p "$TMP_GEOSITE" "$TMP_GEOIP" "$TMP_CLASSICAL" "$CACHE_DIR"
+          mkdir -p "$TMP_GEOSITE" "$TMP_GEOIP" "$TARGET_CLASSICAL" "$CACHE_DIR"
 
           while IFS= read -r line || [[ -n "$line" ]]; do
             [[ "$line" =~ ^[[:space:]]*#.*$ ]] && continue
@@ -86,138 +85,60 @@ jobs:
             FILENAME="$(echo "$FILENAME" | tr -cd '[:alnum:]_-')"
             [[ -z "$FILENAME" ]] && FILENAME="rule_$(date +%s)"
 
-            RAW_FILE="$CACHE_DIR/${FILENAME}.raw"
-            TMP_FILE="$CACHE_DIR/${FILENAME}.tmp"
-
-            GEOSITE_FILE="$TMP_GEOSITE/${FILENAME}.list"
-            GEOSITE_MRS="$TMP_GEOSITE/${FILENAME}.mrs"
-
-            GEOIP_FILE="$TMP_GEOIP/${FILENAME}.txt"
-            GEOIP_MRS="$TMP_GEOIP/${FILENAME}.mrs"
+            RAW_FILE="$CACHE_DIR/${FILENAME}.txt"
+            DEST_TXT=""
+            DEST_MRS=""
+            BEHAVIOR=""
 
             echo "Processing: $URL -> $FILENAME"
 
             if ! curl -sL -f --max-time 30 "$URL" -o "$RAW_FILE"; then
               echo "Error: Failed to download $URL"
-              rm -f "$RAW_FILE" "$TMP_FILE"
+              rm -f "$RAW_FILE"
               continue
             fi
 
             if [[ ! -s "$RAW_FILE" ]]; then
               echo "Error: Downloaded file is empty for $URL"
-              rm -f "$RAW_FILE" "$TMP_FILE"
+              rm -f "$RAW_FILE"
               continue
             fi
 
+            # 按你原版逻辑判断：
+            # 只要文件里命中 IP 特征，就归 geoip；否则归 geosite
             if grep -qE "^[[:space:]]*(IP-CIDR|IP-CIDR6|IP-ASN|SRC-IP-CIDR)" "$RAW_FILE" || \
                grep -qE "^[[:space:]]*-[[:space:]]+(IP-CIDR|IP-CIDR6|IP-ASN|SRC-IP-CIDR)" "$RAW_FILE" || \
                grep -qE "^[[:space:]]*([0-9]{1,3}\.){3}[0-9]{1,3}/[0-9]{1,2}[[:space:]]*$" "$RAW_FILE" || \
                grep -qE "^[[:space:]]*([0-9a-fA-F]{0,4}:){2,7}[0-9a-fA-F]{0,4}/[0-9]{1,3}[[:space:]]*$" "$RAW_FILE"; then
-
               BEHAVIOR="ipcidr"
-
-              grep -vE "^[[:space:]]*(#|!|$|payload:|DOMAIN|GEOIP|PROCESS-NAME|SRC-PORT|DST-PORT|MATCH)" "$RAW_FILE" | \
-              sed -E 's/^[[:space:]]*-[[:space:]]+//' | \
-              sed -E 's/^\|\|//g' | \
-              sed -E 's/\^$//g' | \
-              sed -E 's/^[[:space:]]*(IP-CIDR|IP-CIDR6|IP-ASN|SRC-IP-CIDR)[[:space:]]*,?[[:space:]]*//' | \
-              sed -E "s/^['\"+]?//; s/['\"+]?$//" | \
-              cut -d',' -f1 | \
-              sed 's/[[:space:]]//g' | \
-              grep -E "^(([0-9]{1,3}\.){3}[0-9]{1,3}/[0-9]{1,2}|([0-9a-fA-F]{0,4}:){2,7}[0-9a-fA-F]{0,4}/[0-9]{1,3})$" | \
-              sort -u > "$TMP_FILE" || true
-
-              if [[ -s "$TMP_FILE" ]] && grep -q "[^[:space:]]" "$TMP_FILE"; then
-                cp "$TMP_FILE" "$GEOIP_FILE"
-                ORIGINAL_COUNT="$(wc -l < "$GEOIP_FILE")"
-                if ./mihomo-bin convert-ruleset "$BEHAVIOR" text "$GEOIP_FILE" "$GEOIP_MRS"; then
-                  MRS_SIZE="$(stat -c%s "$GEOIP_MRS" 2>/dev/null || echo "0")"
-                  echo "✓ Success: geoip/$FILENAME ($BEHAVIOR) - $ORIGINAL_COUNT rules -> ${MRS_SIZE} bytes"
-                else
-                  echo "✗ Error: Failed to convert geoip/$FILENAME"
-                  rm -f "$GEOIP_FILE" "$GEOIP_MRS"
-                fi
-              else
-                echo "⚠ Warning: No valid IP rules found in $FILENAME"
-              fi
-
+              DEST_TXT="$TMP_GEOIP/${FILENAME}.txt"
+              DEST_MRS="$TMP_GEOIP/${FILENAME}.mrs"
             else
               BEHAVIOR="domain"
-
-              grep -vE "^[[:space:]]*(IP-CIDR|IP-CIDR6|IP-ASN|SRC-IP-CIDR|#|!|$|payload:|GEOIP|PROCESS-NAME|SRC-PORT|DST-PORT|MATCH)" "$RAW_FILE" | \
-              sed -E 's/^[[:space:]]*-[[:space:]]+//' | \
-              sed -E 's/^\|\|//g' | \
-              sed -E 's/\^$//g' | \
-              sed -E "s/^['\"+]?//; s/['\"+]?$//" | \
-              awk -F',' '
-              {
-                gsub(/[[:space:]]/, "", $1)
-                gsub(/[[:space:]]/, "", $2)
-                type=toupper($1)
-                val=$2
-
-                if (type=="DOMAIN-SUFFIX" && val!="") {
-                  print val
-                  print "." val
-                  next
-                }
-
-                if ((type=="DOMAIN" || type=="FULL" || type=="FULL:" || type=="FULL") && val!="") {
-                  print val
-                  next
-                }
-
-                if (type=="DOMAIN-KEYWORD" || type=="DOMAIN-REGEX") next
-
-                if (tolower($1) ~ /^domain:/ && $2=="") {
-                  sub(/^domain:/, "", $1)
-                  print $1
-                  next
-                }
-
-                if ($2=="") {
-                  print $1
-                  next
-                }
-              }
-              ' | \
-              sed -E 's/^domain://g' | \
-              sed -E 's/^\.\.+/./g' | \
-              sed -E 's/^\*\.?/./g' | \
-              sed -E 's/^\+\././g' | \
-              sed -E 's/_/*/g' | \
-              cut -d',' -f1 | \
-              sed 's/[[:space:]]//g' | \
-              grep -vE "^(no-resolve|force-remote-dns|keyword:|regexp:|\*|.*\*.*\*)$" | \
-              grep -v '^$' | \
-              sort -u > "$TMP_FILE" || true
-
-              if [[ -s "$TMP_FILE" ]] && grep -q "[^[:space:]]" "$TMP_FILE"; then
-                cp "$TMP_FILE" "$GEOSITE_FILE"
-                ORIGINAL_COUNT="$(wc -l < "$GEOSITE_FILE")"
-                if ./mihomo-bin convert-ruleset "$BEHAVIOR" text "$GEOSITE_FILE" "$GEOSITE_MRS"; then
-                  MRS_SIZE="$(stat -c%s "$GEOSITE_MRS" 2>/dev/null || echo "0")"
-                  echo "✓ Success: geosite/$FILENAME ($BEHAVIOR) - $ORIGINAL_COUNT rules -> ${MRS_SIZE} bytes"
-                else
-                  echo "✗ Error: Failed to convert geosite/$FILENAME"
-                  rm -f "$GEOSITE_FILE" "$GEOSITE_MRS"
-                fi
-              else
-                echo "⚠ Warning: No valid domain rules found in $FILENAME"
-              fi
+              DEST_TXT="$TMP_GEOSITE/${FILENAME}.txt"
+              DEST_MRS="$TMP_GEOSITE/${FILENAME}.mrs"
             fi
 
-            rm -f "$RAW_FILE" "$TMP_FILE"
+            # 原文不改，直接落盘成 .txt
+            cp "$RAW_FILE" "$DEST_TXT"
+
+            # 只做一件事：尝试从原文 txt 生成 mrs
+            # 如果源本身不符合 mihomo 可直接编译的 text 格式，就保留 txt，不洗内容硬改
+            if ./mihomo-bin convert-ruleset "$BEHAVIOR" text "$DEST_TXT" "$DEST_MRS"; then
+              MRS_SIZE="$(stat -c%s "$DEST_MRS" 2>/dev/null || echo "0")"
+              echo "✓ Success: $FILENAME ($BEHAVIOR) -> ${MRS_SIZE} bytes"
+            else
+              echo "⚠ Warning: convert-ruleset failed for $FILENAME ($BEHAVIOR), keep raw txt only"
+              rm -f "$DEST_MRS"
+            fi
+
+            rm -f "$RAW_FILE"
           done < "$INPUT_FILE"
 
           mkdir -p "$TARGET_ROOT"
-          mkdir -p "$TARGET_CLASSICAL"
-
           rm -rf "$TARGET_GEOSITE" "$TARGET_GEOIP"
           mv "$TMP_GEOSITE" "$TARGET_GEOSITE"
           mv "$TMP_GEOIP" "$TARGET_GEOIP"
-
-          # classical 目录保留出来，和你当前仓库结构一致
           mkdir -p "$TARGET_CLASSICAL"
 
           rm -rf "$TMP_ROOT" "$CACHE_DIR"
@@ -233,17 +154,17 @@ jobs:
           TOTAL_FILES=0
           TOTAL_SIZE=0
 
-          for mrs in mihomo/rule-set/geoip/*.mrs mihomo/rule-set/geosite/*.mrs; do
-            [ -f "$mrs" ] || continue
-            REL="${mrs#mihomo/rule-set/}"
-            SIZE="$(stat -c%s "$mrs" 2>/dev/null || echo "0")"
+          for f in mihomo/rule-set/geoip/*.mrs mihomo/rule-set/geosite/*.mrs; do
+            [ -f "$f" ] || continue
+            REL="${f#mihomo/rule-set/}"
+            SIZE="$(stat -c%s "$f" 2>/dev/null || echo "0")"
             echo "  $REL -> ${SIZE} bytes"
             TOTAL_FILES=$((TOTAL_FILES + 1))
             TOTAL_SIZE=$((TOTAL_SIZE + SIZE))
           done
 
           echo
-          echo "Total: $TOTAL_FILES files, $TOTAL_SIZE bytes"
+          echo "Total mrs files: $TOTAL_FILES, $TOTAL_SIZE bytes"
 
       - name: Commit and push config
         shell: bash
