@@ -79,6 +79,8 @@ jobs:
 
           IP_ONLY_KEYS = {'ip_cidr', 'source_ip_cidr', 'geoip'}
 
+          MANIFEST_PATH = "./rule-set/.generated-manifest.json"
+
           def read_yaml_from_url(url):
               headers = {'User-Agent': 'Mozilla/5.0'}
               response = requests.get(url, headers=headers)
@@ -124,7 +126,7 @@ jobs:
                                       })
                       rules.append(rule)
 
-              for index, row in df.iterrows():
+              for _, row in df.iterrows():
                   if 'AND' not in row['pattern']:
                       filtered_rows.append(row)
 
@@ -209,6 +211,11 @@ jobs:
                   return geo_output_directory
               return geosite_output_directory
 
+          def compile_json_to_srs(json_path):
+              srs_path = os.path.splitext(json_path)[0] + ".srs"
+              rc = os.system(f'sing-box rule-set compile --output "{srs_path}" "{json_path}"')
+              return rc == 0, srs_path
+
           def parse_list_file(link, geo_output_directory, geosite_output_directory):
               try:
                   if '@' in link:
@@ -261,21 +268,72 @@ jobs:
 
                       file_name = os.path.join(output_directory, f"{base_filename}.json")
                       with open(file_name, 'w', encoding='utf-8') as output_file:
-                          result_rules_str = json.dumps(
-                              sort_dict(result_rules),
-                              ensure_ascii=False,
-                              indent=2
-                          )
+                          result_rules_str = json.dumps(sort_dict(result_rules), ensure_ascii=False, indent=2)
                           result_rules_str = result_rules_str.replace('\\\\', '\\')
                           output_file.write(result_rules_str)
 
-                      srs_path = file_name.replace(".json", ".srs")
-                      os.system(f"sing-box rule-set compile --output {srs_path} {file_name}")
-                      return file_name
+                      ok, srs_path = compile_json_to_srs(file_name)
+                      if not ok:
+                          print(f"编译失败: {file_name}")
+
+                      return os.path.relpath(file_name, ".")
 
               except Exception as e:
                   print(f'获取链接出错,已跳过:{link},原因:{str(e)}')
-                  pass
+                  return None
+
+          def load_manifest(manifest_path):
+              if not os.path.exists(manifest_path):
+                  return []
+              try:
+                  with open(manifest_path, "r", encoding="utf-8") as f:
+                      data = json.load(f)
+                  if isinstance(data, list):
+                      return data
+                  return []
+              except Exception:
+                  return []
+
+          def save_manifest(manifest_path, items):
+              os.makedirs(os.path.dirname(manifest_path), exist_ok=True)
+              with open(manifest_path, "w", encoding="utf-8") as f:
+                  json.dump(sorted(items), f, ensure_ascii=False, indent=2)
+
+          def remove_stale_managed_files(previous_items, current_items):
+              stale_items = sorted(set(previous_items) - set(current_items))
+              for rel_json in stale_items:
+                  abs_json = os.path.join(".", rel_json)
+                  abs_srs = os.path.splitext(abs_json)[0] + ".srs"
+
+                  if os.path.exists(abs_json):
+                      os.remove(abs_json)
+                      print(f"删除旧下载 json: {rel_json}")
+
+                  if os.path.exists(abs_srs):
+                      os.remove(abs_srs)
+                      print(f"删除旧下载 srs: {os.path.relpath(abs_srs, '.')}")
+
+          def compile_manual_local_jsons(geo_output_dir, geosite_output_dir, managed_items):
+              managed_set = set(managed_items)
+              local_jsons = []
+
+              for base_dir in [geo_output_dir, geosite_output_dir]:
+                  if not os.path.exists(base_dir):
+                      continue
+                  for entry in os.listdir(base_dir):
+                      if entry.endswith(".json"):
+                          rel_path = os.path.relpath(os.path.join(base_dir, entry), ".")
+                          local_jsons.append(rel_path)
+
+              manual_jsons = sorted(set(local_jsons) - managed_set)
+
+              for rel_json in manual_jsons:
+                  abs_json = os.path.join(".", rel_json)
+                  ok, srs_path = compile_json_to_srs(abs_json)
+                  if ok:
+                      print(f"本地手动 json 已编译: {rel_json}")
+                  else:
+                      print(f"本地手动 json 编译失败: {rel_json}")
 
           with open("singbox.txt", 'r', encoding='utf-8') as links_file:
               links = links_file.read().splitlines()
@@ -288,14 +346,21 @@ jobs:
           os.makedirs(geo_output_dir, exist_ok=True)
           os.makedirs(geosite_output_dir, exist_ok=True)
 
-          result_file_names = []
+          previous_managed = load_manifest(MANIFEST_PATH)
+          current_managed = []
+
           for link in links:
               result_file_name = parse_list_file(
                   link,
                   geo_output_directory=geo_output_dir,
                   geosite_output_directory=geosite_output_dir
               )
-              result_file_names.append(result_file_name)
+              if result_file_name:
+                  current_managed.append(result_file_name)
+
+          remove_stale_managed_files(previous_managed, current_managed)
+          compile_manual_local_jsons(geo_output_dir, geosite_output_dir, current_managed)
+          save_manifest(MANIFEST_PATH, current_managed)
           EOF
 
       - name: Commit and push config

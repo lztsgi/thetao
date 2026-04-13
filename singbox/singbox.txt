@@ -1,2 +1,1 @@
 https://raw.githubusercontent.com/TG-Twilight/AWAvenue-Ads-Rule/main/Filters/AWAvenue-Ads-Rule-Clash-Classical.yaml@adblock
-https://raw.githubusercontent.com/juewuy/ShellCrash/dev/public/fake_ip_filter.list@fakeip-filter
