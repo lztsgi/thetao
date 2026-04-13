@@ -3,7 +3,7 @@ name: mihomo
 on:
   workflow_dispatch:
   schedule:
-    - cron: '5 20 * * *'
+    - cron: "0 20 * * *"
 
 permissions:
   contents: write
@@ -33,226 +33,194 @@ jobs:
           chmod +x mihomo-bin
           rm -rf temp_deb mihomo.deb
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.x"
-
-      - name: Install dependencies
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          python -m pip install --upgrade pip
-          pip install requests pyyaml
-
       - name: Process Rules
         shell: bash
         run: |
           set -Eeuo pipefail
 
-          python3 << 'EOF'
-          import ipaddress
-          import re
-          import shutil
-          import subprocess
-          from pathlib import Path
+          INPUT_FILE="mihomo/mihomo.txt"
+          TARGET_ROOT="mihomo/rule-set"
+          TARGET_GEOSITE="$TARGET_ROOT/geosite"
+          TARGET_GEOIP="$TARGET_ROOT/geoip"
+          TARGET_CLASSICAL="$TARGET_ROOT/classical"
 
-          import requests
-          import yaml
+          TMP_ROOT="mihomo/.tmp_rule_set"
+          TMP_GEOSITE="$TMP_ROOT/geosite"
+          TMP_GEOIP="$TMP_ROOT/geoip"
+          TMP_CLASSICAL="$TMP_ROOT/classical"
+          CACHE_DIR="mihomo/.cache"
 
-          INPUT_FILE = Path("mihomo/mihomo.txt")
-          TARGET_ROOT = Path("mihomo/rule-set")
-          TARGET_GEOIP = TARGET_ROOT / "geoip"
-          TARGET_GEOSITE = TARGET_ROOT / "geosite"
-          TARGET_CLASSICAL = TARGET_ROOT / "classical"
+          if [[ ! -f "$INPUT_FILE" ]]; then
+            echo "Missing input file: $INPUT_FILE"
+            exit 1
+          fi
 
-          TMP_ROOT = Path("mihomo/.tmp_rule_set")
-          TMP_GEOIP = TMP_ROOT / "geoip"
-          TMP_GEOSITE = TMP_ROOT / "geosite"
-          TMP_CLASSICAL = TMP_ROOT / "classical"
+          rm -rf "$TMP_ROOT" "$CACHE_DIR"
+          mkdir -p "$TMP_GEOSITE" "$TMP_GEOIP" "$TMP_CLASSICAL" "$CACHE_DIR"
 
-          if not INPUT_FILE.exists():
-              raise FileNotFoundError(f"Missing input file: {INPUT_FILE}")
+          while IFS= read -r line || [[ -n "$line" ]]; do
+            [[ "$line" =~ ^[[:space:]]*#.*$ ]] && continue
+            [[ -z "${line//[[:space:]]/}" ]] && continue
 
-          session = requests.Session()
-          session.headers.update({"User-Agent": "Mozilla/5.0"})
+            URL=""
+            FILENAME=""
 
-          def sanitize_name(name: str) -> str:
-              name = re.sub(r"[^A-Za-z0-9_-]", "", name)
-              return name or "rule"
+            if [[ "$line" == *"@"* ]]; then
+              LAST_PART="${line##*@}"
+              if [[ "$LAST_PART" != */* ]]; then
+                URL="${line%@*}"
+                FILENAME="$LAST_PART"
+              else
+                URL="$line"
+                FILENAME="$(basename "$URL")"
+                FILENAME="${FILENAME%%\?*}"
+                FILENAME="${FILENAME%.*}"
+              fi
+            else
+              URL="$line"
+              FILENAME="$(basename "$URL")"
+              FILENAME="${FILENAME%%\?*}"
+              FILENAME="${FILENAME%.*}"
+            fi
 
-          def parse_source_name(line: str) -> tuple[str, str]:
-              line = line.strip().replace("\ufeff", "")
-              if "@" in line:
-                  url, suffix = line.rsplit("@", 1)
-                  if "/" not in suffix:
-                      return url.strip(), sanitize_name(suffix.strip())
-              url = line.strip()
-              stem = Path(url.split("?", 1)[0]).stem
-              return url, sanitize_name(stem)
+            FILENAME="$(echo "$FILENAME" | tr -cd '[:alnum:]_-')"
+            [[ -z "$FILENAME" ]] && FILENAME="rule_$(date +%s)"
 
-          def fetch_text(url: str) -> str:
-              resp = session.get(url, timeout=60)
-              resp.raise_for_status()
-              return resp.text
+            RAW_FILE="$CACHE_DIR/${FILENAME}.raw"
+            TMP_FILE="$CACHE_DIR/${FILENAME}.tmp"
 
-          def flatten_yaml_payload_or_keep(text: str) -> tuple[str, str]:
-              """
-              保守逻辑：
-              - 如果是 payload yaml，则只把 payload 项逐行摊平，不改每一项内容
-              - 否则原样返回
-              """
-              try:
-                  parsed = yaml.safe_load(text)
-              except Exception:
-                  return text, "text"
+            GEOSITE_FILE="$TMP_GEOSITE/${FILENAME}.list"
+            GEOSITE_MRS="$TMP_GEOSITE/${FILENAME}.mrs"
 
-              if isinstance(parsed, dict) and isinstance(parsed.get("payload"), list):
-                  lines = []
-                  for item in parsed["payload"]:
-                      if isinstance(item, str):
-                          s = item.rstrip("\r\n")
-                          if s:
-                              lines.append(s)
-                  return ("\n".join(lines) + "\n") if lines else "", "yaml_payload"
+            GEOIP_FILE="$TMP_GEOIP/${FILENAME}.txt"
+            GEOIP_MRS="$TMP_GEOIP/${FILENAME}.mrs"
 
-              return text, "text"
+            echo "Processing: $URL -> $FILENAME"
 
-          def effective_lines(flat_text: str) -> list[str]:
-              result = []
-              for raw in flat_text.splitlines():
-                  line = raw.strip().replace("\ufeff", "")
-                  if not line:
-                      continue
-                  if line.startswith("#") or line.startswith("!"):
-                      continue
-                  result.append(line)
-              return result
+            if ! curl -sL -f --max-time 30 "$URL" -o "$RAW_FILE"; then
+              echo "Error: Failed to download $URL"
+              rm -f "$RAW_FILE" "$TMP_FILE"
+              continue
+            fi
 
-          def is_cidr_line(line: str) -> bool:
-              try:
-                  ipaddress.ip_network(line, strict=False)
-                  return True
-              except Exception:
-                  return False
+            if [[ ! -s "$RAW_FILE" ]]; then
+              echo "Error: Downloaded file is empty for $URL"
+              rm -f "$RAW_FILE" "$TMP_FILE"
+              continue
+            fi
 
-          def is_plain_domain_text_line(line: str) -> bool:
-              """
-              只接受已是 domain text 的行：
-              - 不含逗号
-              - 不是 CIDR
-              - 不是明显的 classical/other 规则
-              - 保留原样，不做 +. / . / DOMAIN-SUFFIX 重写
-              """
-              if "," in line:
-                  return False
-              if is_cidr_line(line):
-                  return False
-              if line.lower() == "payload:":
-                  return False
-              if re.match(r"^[A-Za-z][A-Za-z0-9+.-]*://", line):
-                  return False
-              return True
+            if grep -qE "^[[:space:]]*(IP-CIDR|IP-CIDR6|IP-ASN|SRC-IP-CIDR)" "$RAW_FILE" || \
+               grep -qE "^[[:space:]]*-[[:space:]]+(IP-CIDR|IP-CIDR6|IP-ASN|SRC-IP-CIDR)" "$RAW_FILE" || \
+               grep -qE "^[[:space:]]*([0-9]{1,3}\.){3}[0-9]{1,3}/[0-9]{1,2}[[:space:]]*$" "$RAW_FILE" || \
+               grep -qE "^[[:space:]]*([0-9a-fA-F]{0,4}:){2,7}[0-9a-fA-F]{0,4}/[0-9]{1,3}[[:space:]]*$" "$RAW_FILE"; then
 
-          def classify(lines: list[str]) -> str:
-              if not lines:
-                  return "empty"
+              BEHAVIOR="ipcidr"
 
-              if all(is_cidr_line(x) for x in lines):
-                  return "ipcidr"
+              grep -vE "^[[:space:]]*(#|!|$|payload:|DOMAIN|GEOIP|PROCESS-NAME|SRC-PORT|DST-PORT|MATCH)" "$RAW_FILE" | \
+              sed -E 's/^[[:space:]]*-[[:space:]]+//' | \
+              sed -E 's/^\|\|//g' | \
+              sed -E 's/\^$//g' | \
+              sed -E 's/^[[:space:]]*(IP-CIDR|IP-CIDR6|IP-ASN|SRC-IP-CIDR)[[:space:]]*,?[[:space:]]*//' | \
+              sed -E "s/^['\"+]?//; s/['\"+]?$//" | \
+              cut -d',' -f1 | \
+              sed 's/[[:space:]]//g' | \
+              grep -E "^(([0-9]{1,3}\.){3}[0-9]{1,3}/[0-9]{1,2}|([0-9a-fA-F]{0,4}:){2,7}[0-9a-fA-F]{0,4}/[0-9]{1,3})$" | \
+              sort -u > "$TMP_FILE" || true
 
-              if all(is_plain_domain_text_line(x) for x in lines):
-                  return "domain"
+              if [[ -s "$TMP_FILE" ]] && grep -q "[^[:space:]]" "$TMP_FILE"; then
+                cp "$TMP_FILE" "$GEOIP_FILE"
+                ORIGINAL_COUNT="$(wc -l < "$GEOIP_FILE")"
+                if ./mihomo-bin convert-ruleset "$BEHAVIOR" text "$GEOIP_FILE" "$GEOIP_MRS"; then
+                  MRS_SIZE="$(stat -c%s "$GEOIP_MRS" 2>/dev/null || echo "0")"
+                  echo "✓ Success: geoip/$FILENAME ($BEHAVIOR) - $ORIGINAL_COUNT rules -> ${MRS_SIZE} bytes"
+                else
+                  echo "✗ Error: Failed to convert geoip/$FILENAME"
+                  rm -f "$GEOIP_FILE" "$GEOIP_MRS"
+                fi
+              else
+                echo "⚠ Warning: No valid IP rules found in $FILENAME"
+              fi
 
-              return "classical"
+            else
+              BEHAVIOR="domain"
 
-          def write_lines(path: Path, lines: list[str]):
-              path.parent.mkdir(parents=True, exist_ok=True)
-              with open(path, "w", encoding="utf-8", newline="\n") as f:
-                  for line in lines:
-                      f.write(line.rstrip("\n") + "\n")
+              grep -vE "^[[:space:]]*(IP-CIDR|IP-CIDR6|IP-ASN|SRC-IP-CIDR|#|!|$|payload:|GEOIP|PROCESS-NAME|SRC-PORT|DST-PORT|MATCH)" "$RAW_FILE" | \
+              sed -E 's/^[[:space:]]*-[[:space:]]+//' | \
+              sed -E 's/^\|\|//g' | \
+              sed -E 's/\^$//g' | \
+              sed -E "s/^['\"+]?//; s/['\"+]?$//" | \
+              awk -F',' '
+              {
+                gsub(/[[:space:]]/, "", $1)
+                gsub(/[[:space:]]/, "", $2)
+                type=toupper($1)
+                val=$2
 
-          def compile_mrs(behavior: str, input_path: Path, output_path: Path):
-              subprocess.run(
-                  ["./mihomo-bin", "convert-ruleset", behavior, "text", str(input_path), str(output_path)],
-                  check=True,
-              )
+                if (type=="DOMAIN-SUFFIX" && val!="") {
+                  print val
+                  print "." val
+                  next
+                }
 
-          with open(INPUT_FILE, "r", encoding="utf-8") as f:
-              sources = [line.strip() for line in f if line.strip() and not line.strip().startswith("#")]
+                if ((type=="DOMAIN" || type=="FULL" || type=="FULL:" || type=="FULL") && val!="") {
+                  print val
+                  next
+                }
 
-          print(f"Loaded {len(sources)} link(s) from {INPUT_FILE}")
-          for idx, item in enumerate(sources, 1):
-              print(f"[{idx}] {item}")
+                if (type=="DOMAIN-KEYWORD" || type=="DOMAIN-REGEX") next
 
-          if TMP_ROOT.exists():
-              shutil.rmtree(TMP_ROOT)
-          TMP_GEOIP.mkdir(parents=True, exist_ok=True)
-          TMP_GEOSITE.mkdir(parents=True, exist_ok=True)
-          TMP_CLASSICAL.mkdir(parents=True, exist_ok=True)
+                if (tolower($1) ~ /^domain:/ && $2=="") {
+                  sub(/^domain:/, "", $1)
+                  print $1
+                  next
+                }
 
-          for item in sources:
-              try:
-                  url, name = parse_source_name(item)
-                  print(f"Processing: {url} -> {name}")
+                if ($2=="") {
+                  print $1
+                  next
+                }
+              }
+              ' | \
+              sed -E 's/^domain://g' | \
+              sed -E 's/^\.\.+/./g' | \
+              sed -E 's/^\*\.?/./g' | \
+              sed -E 's/^\+\././g' | \
+              sed -E 's/_/*/g' | \
+              cut -d',' -f1 | \
+              sed 's/[[:space:]]//g' | \
+              grep -vE "^(no-resolve|force-remote-dns|keyword:|regexp:|\*|.*\*.*\*)$" | \
+              grep -v '^$' | \
+              sort -u > "$TMP_FILE" || true
 
-                  raw_text = fetch_text(url)
-                  flat_text, source_kind = flatten_yaml_payload_or_keep(raw_text)
-                  lines = effective_lines(flat_text)
-                  kind = classify(lines)
+              if [[ -s "$TMP_FILE" ]] && grep -q "[^[:space:]]" "$TMP_FILE"; then
+                cp "$TMP_FILE" "$GEOSITE_FILE"
+                ORIGINAL_COUNT="$(wc -l < "$GEOSITE_FILE")"
+                if ./mihomo-bin convert-ruleset "$BEHAVIOR" text "$GEOSITE_FILE" "$GEOSITE_MRS"; then
+                  MRS_SIZE="$(stat -c%s "$GEOSITE_MRS" 2>/dev/null || echo "0")"
+                  echo "✓ Success: geosite/$FILENAME ($BEHAVIOR) - $ORIGINAL_COUNT rules -> ${MRS_SIZE} bytes"
+                else
+                  echo "✗ Error: Failed to convert geosite/$FILENAME"
+                  rm -f "$GEOSITE_FILE" "$GEOSITE_MRS"
+                fi
+              else
+                echo "⚠ Warning: No valid domain rules found in $FILENAME"
+              fi
+            fi
 
-                  if kind == "empty":
-                      print(f"⚠ No valid lines found: {url}")
-                      continue
+            rm -f "$RAW_FILE" "$TMP_FILE"
+          done < "$INPUT_FILE"
 
-                  if kind == "ipcidr":
-                      txt_path = TMP_GEOIP / f"{name}.txt"
-                      mrs_path = TMP_GEOIP / f"{name}.mrs"
-                      write_lines(txt_path, lines)
-                      compile_mrs("ipcidr", txt_path, mrs_path)
-                      print(f"✓ geoip/{name} ({len(lines)} lines)")
-                      continue
+          mkdir -p "$TARGET_ROOT"
+          mkdir -p "$TARGET_CLASSICAL"
 
-                  if kind == "domain":
-                      list_path = TMP_GEOSITE / f"{name}.list"
-                      mrs_path = TMP_GEOSITE / f"{name}.mrs"
-                      write_lines(list_path, lines)
-                      compile_mrs("domain", list_path, mrs_path)
-                      print(f"✓ geosite/{name} ({len(lines)} lines)")
-                      continue
+          rm -rf "$TARGET_GEOSITE" "$TARGET_GEOIP"
+          mv "$TMP_GEOSITE" "$TARGET_GEOSITE"
+          mv "$TMP_GEOIP" "$TARGET_GEOIP"
 
-                  # classical/mixed: 原样保留“摊平后”的文本，不生成 mrs
-                  classical_path = TMP_CLASSICAL / f"{name}.txt"
-                  write_lines(classical_path, lines)
-                  print(f"⚠ classical/{name} preserved as text only; skipped mrs")
+          # classical 目录保留出来，和你当前仓库结构一致
+          mkdir -p "$TARGET_CLASSICAL"
 
-              except subprocess.CalledProcessError as e:
-                  print(f"✗ convert failed for {item}: {e}")
-              except Exception as e:
-                  print(f"✗ error for {item}: {e}")
-
-          TARGET_ROOT.mkdir(parents=True, exist_ok=True)
-
-          for path in (TARGET_GEOIP, TARGET_GEOSITE, TARGET_CLASSICAL):
-              if path.exists():
-                  shutil.rmtree(path)
-
-          shutil.move(str(TMP_GEOIP), str(TARGET_GEOIP))
-          shutil.move(str(TMP_GEOSITE), str(TARGET_GEOSITE))
-          shutil.move(str(TMP_CLASSICAL), str(TARGET_CLASSICAL))
-          shutil.rmtree(TMP_ROOT, ignore_errors=True)
-
-          def count_files(pattern: str) -> int:
-              return len(list(TARGET_ROOT.glob(pattern)))
-
-          print("")
-          print("=== Summary ===")
-          print(f"geoip txt: {count_files('geoip/*.txt')}")
-          print(f"geoip mrs: {count_files('geoip/*.mrs')}")
-          print(f"geosite list: {count_files('geosite/*.list')}")
-          print(f"geosite mrs: {count_files('geosite/*.mrs')}")
-          print(f"classical txt: {count_files('classical/*.txt')}")
-          EOF
+          rm -rf "$TMP_ROOT" "$CACHE_DIR"
 
       - name: Verify Rules
         shell: bash
@@ -265,17 +233,17 @@ jobs:
           TOTAL_FILES=0
           TOTAL_SIZE=0
 
-          for f in mihomo/rule-set/geoip/*.mrs mihomo/rule-set/geosite/*.mrs; do
-            [ -f "$f" ] || continue
-            REL="${f#mihomo/rule-set/}"
-            SIZE="$(stat -c%s "$f" 2>/dev/null || echo "0")"
+          for mrs in mihomo/rule-set/geoip/*.mrs mihomo/rule-set/geosite/*.mrs; do
+            [ -f "$mrs" ] || continue
+            REL="${mrs#mihomo/rule-set/}"
+            SIZE="$(stat -c%s "$mrs" 2>/dev/null || echo "0")"
             echo "  $REL -> ${SIZE} bytes"
             TOTAL_FILES=$((TOTAL_FILES + 1))
             TOTAL_SIZE=$((TOTAL_SIZE + SIZE))
           done
 
           echo
-          echo "Total mrs files: $TOTAL_FILES, $TOTAL_SIZE bytes"
+          echo "Total: $TOTAL_FILES files, $TOTAL_SIZE bytes"
 
       - name: Commit and push config
         shell: bash
