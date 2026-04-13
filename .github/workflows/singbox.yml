@@ -23,7 +23,6 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup sing-box
-        shell: bash
         env:
           SING_BOX_DEB_URL: "https://github.com/SagerNet/sing-box/releases/download/v1.13.6/sing-box_1.13.6_linux_amd64.deb"
         run: |
@@ -31,315 +30,275 @@ jobs:
           wget -O sing-box.deb "$SING_BOX_DEB_URL"
           sudo dpkg -i sing-box.deb
 
-      - name: Set up Python
+      - name: Set up Python3
         uses: actions/setup-python@v5
         with:
           python-version: "3.x"
 
       - name: Install dependencies
-        shell: bash
         run: |
           set -Eeuo pipefail
           python -m pip install --upgrade pip
-          pip install requests pyyaml
+          pip install pandas requests pyyaml
 
-      - name: Build sing-box rule-set
+      - name: Run Python script
         working-directory: ./singbox
-        shell: bash
         run: |
-          set -Eeuo pipefail
           python3 << 'EOF'
-          import json
-          import ipaddress
+          import pandas as pd
           import re
-          import shutil
-          import subprocess
-          from pathlib import Path
-
+          import concurrent.futures
+          import os
+          import json
           import requests
           import yaml
-
-          INPUT_FILE = Path("singbox.txt")
-          TARGET_ROOT = Path("rule-set")
-          TARGET_GEO = TARGET_ROOT / "geo"
-          TARGET_GEOSITE = TARGET_ROOT / "geosite"
-
-          TMP_ROOT = Path(".tmp_rule_set")
-          TMP_GEO = TMP_ROOT / "geo"
-          TMP_GEOSITE = TMP_ROOT / "geosite"
-
-          DOMAIN_KEYS = {"domain", "domain_suffix", "domain_keyword", "domain_regex"}
-          IP_KEYS = {"ip_cidr", "source_ip_cidr", "geoip"}
+          import ipaddress
+          from io import StringIO
 
           MAP_DICT = {
-              "DOMAIN-SUFFIX": "domain_suffix",
-              "HOST-SUFFIX": "domain_suffix",
-              "host-suffix": "domain_suffix",
-              "DOMAIN": "domain",
-              "HOST": "domain",
-              "host": "domain",
-              "FULL": "domain",
-              "FULL:": "domain",
-              "DOMAIN-KEYWORD": "domain_keyword",
-              "HOST-KEYWORD": "domain_keyword",
-              "host-keyword": "domain_keyword",
-              "URL-REGEX": "domain_regex",
-              "DOMAIN-REGEX": "domain_regex",
-              "IP-CIDR": "ip_cidr",
-              "ip-cidr": "ip_cidr",
-              "IP-CIDR6": "ip_cidr",
-              "IP6-CIDR": "ip_cidr",
-              "SRC-IP-CIDR": "source_ip_cidr",
-              "GEOIP": "geoip",
+              'DOMAIN-SUFFIX': 'domain_suffix',
+              'HOST-SUFFIX': 'domain_suffix',
+              'host-suffix': 'domain_suffix',
+              'DOMAIN': 'domain',
+              'HOST': 'domain',
+              'host': 'domain',
+              'DOMAIN-KEYWORD': 'domain_keyword',
+              'HOST-KEYWORD': 'domain_keyword',
+              'host-keyword': 'domain_keyword',
+              'IP-CIDR': 'ip_cidr',
+              'ip-cidr': 'ip_cidr',
+              'IP-CIDR6': 'ip_cidr',
+              'IP6-CIDR': 'ip_cidr',
+              'SRC-IP-CIDR': 'source_ip_cidr',
+              'GEOIP': 'geoip',
+              'DST-PORT': 'port',
+              'SRC-PORT': 'source_port',
+              'URL-REGEX': 'domain_regex',
+              'DOMAIN-REGEX': 'domain_regex'
           }
 
-          session = requests.Session()
-          session.headers.update({"User-Agent": "Mozilla/5.0"})
+          IP_ONLY_KEYS = {'ip_cidr', 'source_ip_cidr', 'geoip'}
 
-          def is_cidr(value: str) -> bool:
-              try:
-                  ipaddress.ip_network(value, strict=False)
-                  return True
-              except Exception:
-                  return False
+          def read_yaml_from_url(url):
+              headers = {'User-Agent': 'Mozilla/5.0'}
+              response = requests.get(url, headers=headers)
+              response.raise_for_status()
+              yaml_data = yaml.safe_load(response.text)
+              return yaml_data
 
-          def parse_source_name(line: str) -> tuple[str, str]:
-              line = line.strip().replace("\ufeff", "")
-              if "@" in line:
-                  url, last = line.rsplit("@", 1)
-                  if "/" not in last:
-                      name = re.sub(r"[^A-Za-z0-9_-]", "", last.strip())
-                      return url.strip(), name or "rule"
-              url = line
-              stem = Path(url.split("?", 1)[0]).stem
-              stem = re.sub(r"[^A-Za-z0-9_-]", "", stem)
-              return url.strip(), stem or "rule"
-
-          def fetch_text(url: str) -> str:
-              resp = session.get(url, timeout=60)
-              resp.raise_for_status()
-              return resp.text
-
-          def new_bucket():
-              return {
-                  "domain": set(),
-                  "domain_suffix": set(),
-                  "domain_keyword": set(),
-                  "domain_regex": set(),
-                  "ip_cidr": set(),
-                  "source_ip_cidr": set(),
-                  "geoip": set(),
-              }
-
-          def add_rule(bucket: dict, key: str, value: str):
-              value = value.strip().strip("'").strip('"')
-              if not value:
-                  return
-
-              if key == "domain_suffix":
-                  value = value.lstrip("+").lstrip(".")
-                  if value:
-                      bucket["domain_suffix"].add(value)
-                  return
-
-              if key == "domain":
-                  value = value.lstrip("+")
-                  if value.startswith("."):
-                      suffix = value.lstrip(".")
-                      if suffix:
-                          bucket["domain_suffix"].add(suffix)
-                  else:
-                      bucket["domain"].add(value)
-                  return
-
-              if key in ("domain_keyword", "domain_regex", "ip_cidr", "source_ip_cidr", "geoip"):
-                  bucket[key].add(value)
-
-          def parse_yaml_payload(text: str):
-              parsed = yaml.safe_load(text)
-              if not isinstance(parsed, dict):
+          def read_list_from_url(url):
+              headers = {'User-Agent': 'Mozilla/5.0'}
+              response = requests.get(url, headers=headers)
+              if response.status_code == 200:
+                  csv_data = StringIO(response.text)
+                  df = pd.read_csv(
+                      csv_data,
+                      header=None,
+                      names=['pattern', 'address', 'other', 'other2', 'other3'],
+                      on_bad_lines='skip'
+                  )
+              else:
                   return None
 
-              items = parsed.get("payload")
-              if not isinstance(items, list):
-                  return None
-
-              bucket = new_bucket()
-
-              for item in items:
-                  if not isinstance(item, str):
-                      continue
-                  item = item.strip()
-                  if not item:
-                      continue
-
-                  if "," not in item:
-                      if is_cidr(item):
-                          add_rule(bucket, "ip_cidr", item)
-                      else:
-                          add_rule(bucket, "domain", item)
-                      continue
-
-                  pattern, value = item.split(",", 1)
-                  value = value.split(",", 1)[0].strip()
-                  mapped = MAP_DICT.get(pattern.strip())
-                  if mapped:
-                      add_rule(bucket, mapped, value)
-
-              return bucket
-
-          def parse_text_lines(text: str):
-              bucket = new_bucket()
-
-              for raw in text.splitlines():
-                  line = raw.strip()
-
-                  if (
-                      not line
-                      or line.startswith("#")
-                      or line.startswith("!")
-                      or line == "payload:"
-                  ):
-                      continue
-
-                  if line.startswith("- "):
-                      line = line[2:].strip()
-
-                  line = line.strip().strip("'").strip('"')
-
-                  if line.startswith("||"):
-                      line = line[2:]
-                  if line.endswith("^"):
-                      line = line[:-1]
-
-                  if "," not in line:
-                      if is_cidr(line):
-                          add_rule(bucket, "ip_cidr", line)
-                      else:
-                          add_rule(bucket, "domain", line)
-                      continue
-
-                  pattern, value = line.split(",", 1)
-                  value = value.split(",", 1)[0].strip()
-                  mapped = MAP_DICT.get(pattern.strip())
-                  if mapped:
-                      add_rule(bucket, mapped, value)
-
-              return bucket
-
-          def build_rules(bucket: dict, wanted_keys: set[str]):
+              filtered_rows = []
               rules = []
-              for key in [
-                  "domain",
-                  "domain_suffix",
-                  "domain_keyword",
-                  "domain_regex",
-                  "ip_cidr",
-                  "source_ip_cidr",
-                  "geoip",
-              ]:
-                  if key not in wanted_keys:
-                      continue
-                  values = sorted(bucket[key])
-                  if values:
-                      rules.append({key: values})
 
-              if not rules:
-                  return None
-              return {"version": 3, "rules": rules}
+              if 'AND' in df['pattern'].values:
+                  and_rows = df[df['pattern'].str.contains('AND', na=False)]
+                  for _, row in and_rows.iterrows():
+                      rule = {
+                          "type": "logical",
+                          "mode": "and",
+                          "rules": []
+                      }
+                      pattern = ",".join(row.values.astype(str))
+                      components = re.findall(r'\((.*?)\)', pattern)
+                      for component in components:
+                          for keyword in MAP_DICT.keys():
+                              if keyword in component:
+                                  match = re.search(f'{keyword},(.*)', component)
+                                  if match:
+                                      value = match.group(1)
+                                      rule["rules"].append({
+                                          MAP_DICT[keyword]: value
+                                      })
+                      rules.append(rule)
 
-          def write_ruleset(base_dir: Path, name: str, rules: dict):
-              base_dir.mkdir(parents=True, exist_ok=True)
-              json_path = base_dir / f"{name}.json"
-              srs_path = base_dir / f"{name}.srs"
+              for index, row in df.iterrows():
+                  if 'AND' not in row['pattern']:
+                      filtered_rows.append(row)
 
-              with open(json_path, "w", encoding="utf-8") as f:
-                  json.dump(rules, f, ensure_ascii=False, indent=2)
-
-              subprocess.run(
-                  ["sing-box", "rule-set", "compile", "--output", str(srs_path), str(json_path)],
-                  check=True,
+              df_filtered = pd.DataFrame(
+                  filtered_rows,
+                  columns=['pattern', 'address', 'other', 'other2', 'other3']
               )
-              print(f"✓ generated {json_path}")
+              return df_filtered, rules
 
-          if not INPUT_FILE.exists():
-              raise FileNotFoundError(f"missing input file: {INPUT_FILE}")
-
-          links = []
-          with open(INPUT_FILE, "r", encoding="utf-8") as f:
-              for raw in f:
-                  line = raw.strip().replace("\ufeff", "")
-                  if not line or line.startswith("#"):
-                      continue
-                  links.append(line)
-
-          print(f"Loaded {len(links)} link(s) from {INPUT_FILE}")
-          for idx, item in enumerate(links, 1):
-              print(f"[{idx}] {item}")
-
-          if TMP_ROOT.exists():
-              shutil.rmtree(TMP_ROOT)
-          TMP_GEO.mkdir(parents=True, exist_ok=True)
-          TMP_GEOSITE.mkdir(parents=True, exist_ok=True)
-
-          for line in links:
+          def is_ipv4_or_ipv6(address):
               try:
-                  url, name = parse_source_name(line)
-                  print(f"Processing: {url} -> {name}")
+                  ipaddress.IPv4Network(address)
+                  return 'ipv4'
+              except ValueError:
+                  try:
+                      ipaddress.IPv6Network(address)
+                      return 'ipv6'
+                  except ValueError:
+                      return None
 
-                  text = fetch_text(url)
+          def parse_and_convert_to_dataframe(link):
+              rules = []
+              if link.endswith('.yaml') or link.endswith('.txt'):
+                  try:
+                      yaml_data = read_yaml_from_url(link)
+                      rows = []
+                      if not isinstance(yaml_data, str):
+                          items = yaml_data.get('payload', [])
+                      else:
+                          lines = yaml_data.splitlines()
+                          line_content = lines[0]
+                          items = line_content.split()
 
-                  bucket = None
-                  if url.lower().endswith((".yaml", ".yml")):
-                      try:
-                          bucket = parse_yaml_payload(text)
-                      except Exception:
-                          bucket = None
+                      for item in items:
+                          address = item.strip("'")
+                          if ',' not in item:
+                              if is_ipv4_or_ipv6(item):
+                                  pattern = 'IP-CIDR'
+                              else:
+                                  if address.startswith('+') or address.startswith('.'):
+                                      pattern = 'DOMAIN-SUFFIX'
+                                      address = address[1:]
+                                      if address.startswith('.'):
+                                          address = address[1:]
+                                  else:
+                                      pattern = 'DOMAIN'
+                          else:
+                              pattern, address = item.split(',', 1)
+                              if ',' in address:
+                                  address = address.split(',', 1)[0]
 
-                  if bucket is None:
-                      bucket = parse_text_lines(text)
+                          rows.append({
+                              'pattern': pattern.strip(),
+                              'address': address.strip(),
+                              'other': None
+                          })
 
-                  domain_rules = build_rules(bucket, DOMAIN_KEYS)
-                  ip_rules = build_rules(bucket, IP_KEYS)
+                      df = pd.DataFrame(rows, columns=['pattern', 'address', 'other'])
+                  except:
+                      df, rules = read_list_from_url(link)
+              else:
+                  df, rules = read_list_from_url(link)
 
-                  if domain_rules:
-                      write_ruleset(TMP_GEOSITE, name, domain_rules)
-                  if ip_rules:
-                      write_ruleset(TMP_GEO, name, ip_rules)
+              return df, rules
 
-                  if not domain_rules and not ip_rules:
-                      print(f"⚠ no valid rules found: {url}")
+          def sort_dict(obj):
+              if isinstance(obj, dict):
+                  return {k: sort_dict(obj[k]) for k in sorted(obj)}
+              elif isinstance(obj, list) and all(isinstance(elem, dict) for elem in obj):
+                  return sorted([sort_dict(x) for x in obj], key=lambda d: sorted(d.keys())[0])
+              elif isinstance(obj, list):
+                  return sorted(sort_dict(x) for x in obj)
+              else:
+                  return obj
+
+          def choose_output_directory(result_rules, geo_output_directory, geosite_output_directory):
+              rule_keys = set()
+              for rule in result_rules.get("rules", []):
+                  rule_keys.update(rule.keys())
+
+              if rule_keys and rule_keys.issubset(IP_ONLY_KEYS):
+                  return geo_output_directory
+              return geosite_output_directory
+
+          def parse_list_file(link, geo_output_directory, geosite_output_directory):
+              try:
+                  if '@' in link:
+                      parts = link.rsplit('@', 1)
+                      url = parts[0]
+                      custom_name = parts[1] if len(parts) > 1 and '/' not in parts[1] else None
+                      if custom_name:
+                          base_filename = custom_name
+                      else:
+                          base_filename = os.path.basename(url).split('.')[0]
+                  else:
+                      url = link
+                      base_filename = os.path.basename(url).split('.')[0]
+
+                  with concurrent.futures.ThreadPoolExecutor() as executor:
+                      results = list(executor.map(parse_and_convert_to_dataframe, [url]))
+                      dfs = [df for df, rules in results]
+                      rules_list = [rules for df, rules in results]
+
+                      df = pd.concat(dfs, ignore_index=True)
+                      df = df[~df['pattern'].str.contains('#')].reset_index(drop=True)
+                      df = df[df['pattern'].isin(MAP_DICT.keys())].reset_index(drop=True)
+                      df = df.drop_duplicates().reset_index(drop=True)
+                      df['pattern'] = df['pattern'].replace(MAP_DICT)
+
+                      result_rules = {"version": 3, "rules": []}
+                      domain_entries = []
+
+                      for pattern, addresses in df.groupby('pattern')['address'].apply(list).to_dict().items():
+                          if pattern == 'domain_suffix':
+                              rule_entry = {pattern: [address.strip() for address in addresses]}
+                              result_rules["rules"].append(rule_entry)
+                          elif pattern == 'domain':
+                              domain_entries.extend([address.strip() for address in addresses])
+                          else:
+                              rule_entry = {pattern: [address.strip() for address in addresses]}
+                              result_rules["rules"].append(rule_entry)
+
+                      domain_entries = list(set(domain_entries))
+                      if domain_entries:
+                          result_rules["rules"].insert(0, {'domain': domain_entries})
+
+                      output_directory = choose_output_directory(
+                          result_rules,
+                          geo_output_directory,
+                          geosite_output_directory
+                      )
+
+                      os.makedirs(output_directory, exist_ok=True)
+
+                      file_name = os.path.join(output_directory, f"{base_filename}.json")
+                      with open(file_name, 'w', encoding='utf-8') as output_file:
+                          result_rules_str = json.dumps(
+                              sort_dict(result_rules),
+                              ensure_ascii=False,
+                              indent=2
+                          )
+                          result_rules_str = result_rules_str.replace('\\\\', '\\')
+                          output_file.write(result_rules_str)
+
+                      srs_path = file_name.replace(".json", ".srs")
+                      os.system(f"sing-box rule-set compile --output {srs_path} {file_name}")
+                      return file_name
 
               except Exception as e:
-                  print(f"获取链接出错,已跳过: {line}, 原因: {e}")
+                  print(f'获取链接出错,已跳过:{link},原因:{str(e)}')
+                  pass
 
-          TARGET_ROOT.mkdir(parents=True, exist_ok=True)
+          with open("singbox.txt", 'r', encoding='utf-8') as links_file:
+              links = links_file.read().splitlines()
 
-          if TARGET_GEO.exists():
-              shutil.rmtree(TARGET_GEO)
-          if TARGET_GEOSITE.exists():
-              shutil.rmtree(TARGET_GEOSITE)
+          links = [l for l in links if l.strip() and not l.strip().startswith("#")]
 
-          shutil.move(str(TMP_GEO), str(TARGET_GEO))
-          shutil.move(str(TMP_GEOSITE), str(TARGET_GEOSITE))
-          shutil.rmtree(TMP_ROOT, ignore_errors=True)
+          geo_output_dir = "./rule-set/geo"
+          geosite_output_dir = "./rule-set/geosite"
 
-          geo_json = sorted(TARGET_GEO.glob("*.json"))
-          geosite_json = sorted(TARGET_GEOSITE.glob("*.json"))
+          os.makedirs(geo_output_dir, exist_ok=True)
+          os.makedirs(geosite_output_dir, exist_ok=True)
 
-          print("")
-          print("=== Build Summary ===")
-          print(f"geo json count: {len(geo_json)}")
-          print(f"geosite json count: {len(geosite_json)}")
-
-          for p in geo_json:
-              print(f"geo: {p.name}")
-          for p in geosite_json:
-              print(f"geosite: {p.name}")
+          result_file_names = []
+          for link in links:
+              result_file_name = parse_list_file(
+                  link,
+                  geo_output_directory=geo_output_dir,
+                  geosite_output_directory=geosite_output_dir
+              )
+              result_file_names.append(result_file_name)
           EOF
 
       - name: Commit and push config
-        shell: bash
         run: |
           set -Eeuo pipefail
           git config --global user.email "action@github.com"
