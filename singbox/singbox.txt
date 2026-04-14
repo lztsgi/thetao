@@ -1,2 +1,9 @@
 https://raw.githubusercontent.com/TG-Twilight/AWAvenue-Ads-Rule/main/Filters/AWAvenue-Ads-Rule-Clash-Classical.yaml@adblock
 https://github.com/DustinWin/ruleset_geodata/releases/download/sing-box-ruleset/private.json@private
+https://github.com/DustinWin/ruleset_geodata/releases/download/sing-box-ruleset/trackerslist.json@
+https://github.com/DustinWin/ruleset_geodata/releases/download/sing-box-ruleset/ads.json@ads
+https://github.com/DustinWin/ruleset_geodata/releases/download/sing-box-ruleset/microsoft-cn.json@microsoft-cn
+https://github.com/DustinWin/ruleset_geodata/releases/download/sing-box-ruleset/apple-cn.json@apple-cn
+https://github.com/DustinWin/ruleset_geodata/releases/download/sing-box-ruleset/google-cn.json@google-cn
+https://github.com/DustinWin/ruleset_geodata/releases/download/sing-box-ruleset/games-cn.json@games-cn
+https://github.com/DustinWin/ruleset_geodata/releases/download/sing-box-ruleset/ai.json@ai
