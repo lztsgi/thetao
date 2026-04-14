@@ -56,6 +56,9 @@ jobs:
           from io import StringIO
           from urllib.parse import urldefrag
 
+          # =========================================================
+          # 1) 基础映射配置
+          # =========================================================
           MAP_DICT = {
               'DOMAIN-SUFFIX': 'domain_suffix',
               'HOST-SUFFIX': 'domain_suffix',
@@ -79,19 +82,23 @@ jobs:
           }
 
           IP_ONLY_KEYS = {'ip_cidr', 'source_ip_cidr', 'geoip'}
-
           MANIFEST_PATH = "./rule-set/.generated-manifest.json"
 
+          # =========================================================
+          # 2) 读取远程规则文件
+          #    - read_yaml_from_url: 处理 yaml/txt payload
+          #    - read_list_from_url: 处理普通列表
+          # =========================================================
           def read_yaml_from_url(url):
               headers = {'User-Agent': 'Mozilla/5.0'}
-              response = requests.get(url, headers=headers)
+              response = requests.get(url, headers=headers, timeout=60)
               response.raise_for_status()
               yaml_data = yaml.safe_load(response.text)
               return yaml_data
 
           def read_list_from_url(url):
               headers = {'User-Agent': 'Mozilla/5.0'}
-              response = requests.get(url, headers=headers)
+              response = requests.get(url, headers=headers, timeout=60)
               if response.status_code == 200:
                   csv_data = StringIO(response.text)
                   df = pd.read_csv(
@@ -128,7 +135,7 @@ jobs:
                       rules.append(rule)
 
               for _, row in df.iterrows():
-                  if 'AND' not in row['pattern']:
+                  if 'AND' not in str(row['pattern']):
                       filtered_rows.append(row)
 
               df_filtered = pd.DataFrame(
@@ -137,6 +144,9 @@ jobs:
               )
               return df_filtered, rules
 
+          # =========================================================
+          # 3) 规则类型识别与解析
+          # =========================================================
           def is_ipv4_or_ipv6(address):
               try:
                   ipaddress.IPv4Network(address)
@@ -158,7 +168,7 @@ jobs:
                           items = yaml_data.get('payload', [])
                       else:
                           lines = yaml_data.splitlines()
-                          line_content = lines[0]
+                          line_content = lines[0] if lines else ""
                           items = line_content.split()
 
                       for item in items:
@@ -186,7 +196,7 @@ jobs:
                           })
 
                       df = pd.DataFrame(rows, columns=['pattern', 'address', 'other'])
-                  except:
+                  except Exception:
                       df, rules = read_list_from_url(link)
               else:
                   df, rules = read_list_from_url(link)
@@ -212,11 +222,72 @@ jobs:
                   return geo_output_directory
               return geosite_output_directory
 
+          # =========================================================
+          # 4) sing-box 编译
+          # =========================================================
           def compile_json_to_srs(json_path):
               srs_path = os.path.splitext(json_path)[0] + ".srs"
               rc = os.system(f'sing-box rule-set compile --output "{srs_path}" "{json_path}"')
               return rc == 0, srs_path
 
+          # =========================================================
+          # 5) 特殊链接解析
+          #    支持：
+          #    #release-assets@other-rule
+          #    #release-assets@rule-set/other
+          #    #release-assets@/rule-set/other
+          # =========================================================
+          def parse_special_link(raw_link):
+              clean_link, fragment = urldefrag(raw_link.strip())
+              mode = None
+              output_subdir = None
+
+              if fragment:
+                  parts = fragment.split('@', 1)
+                  mode = parts[0].strip() if parts[0].strip() else None
+                  if len(parts) > 1:
+                      output_subdir = parts[1].strip() if parts[1].strip() else None
+
+              return clean_link, mode, output_subdir
+
+          def normalize_repo_relative_dir(path_value, default_dir="./rule-set/other-rule"):
+              """
+              把用户写在 singbox.txt 里的目录，统一规范成当前 working-directory 下的相对路径。
+              例如：
+              other-rule            -> ./rule-set/other-rule
+              rule-set/other        -> ./rule-set/other
+              /rule-set/other       -> ./rule-set/other
+              ./rule-set/other      -> ./rule-set/other
+              """
+
+              if not path_value:
+                  return os.path.normpath(default_dir)
+
+              p = path_value.strip().replace("\\", "/")
+
+              # 去掉开头的 /，避免被当成系统绝对路径
+              while p.startswith("/"):
+                  p = p[1:]
+
+              # 去掉开头的 ./
+              while p.startswith("./"):
+                  p = p[2:]
+
+              # 空值保护
+              if not p:
+                  return os.path.normpath(default_dir)
+
+              # 只写 other-rule 这种简写时，默认放到 ./rule-set/ 下
+              if not p.startswith("rule-set/"):
+                  p = f"rule-set/{p}"
+
+              return os.path.normpath(f"./{p}")
+
+          # =========================================================
+          # 6) 下载 GitHub Release Assets
+          #    - 自动排除 Source code
+          #    - 下载到 singbox 工作目录内的指定目录
+          # =========================================================
           def download_github_release_assets(tag_url, output_directory):
               headers = {
                   'User-Agent': 'Mozilla/5.0',
@@ -231,7 +302,7 @@ jobs:
               owner, repo, tag = m.groups()
               api_url = f"https://api.github.com/repos/{owner}/{repo}/releases/tags/{tag}"
 
-              response = requests.get(api_url, headers=headers)
+              response = requests.get(api_url, headers=headers, timeout=60)
               response.raise_for_status()
               release_data = response.json()
 
@@ -251,7 +322,7 @@ jobs:
 
                   save_path = os.path.join(output_directory, asset_name)
 
-                  asset_resp = requests.get(download_url, headers=headers, stream=True)
+                  asset_resp = requests.get(download_url, headers=headers, stream=True, timeout=120)
                   asset_resp.raise_for_status()
 
                   with open(save_path, "wb") as f:
@@ -264,20 +335,9 @@ jobs:
 
               return downloaded_files
 
-          def parse_special_link(raw_link):
-              clean_link, fragment = urldefrag(raw_link.strip())
-              mode = None
-              output_subdir = None
-
-              if fragment:
-                  parts = fragment.split('@')
-                  if parts:
-                      mode = parts[0].strip() or None
-                  if len(parts) > 1:
-                      output_subdir = parts[1].strip() or None
-
-              return clean_link, mode, output_subdir
-
+          # =========================================================
+          # 7) 原有规则转换逻辑
+          # =========================================================
           def parse_list_file(link, geo_output_directory, geosite_output_directory):
               try:
                   if '@' in link:
@@ -294,11 +354,14 @@ jobs:
 
                   with concurrent.futures.ThreadPoolExecutor() as executor:
                       results = list(executor.map(parse_and_convert_to_dataframe, [url]))
-                      dfs = [df for df, rules in results]
-                      rules_list = [rules for df, rules in results]
+                      dfs = [df for df, rules in results if df is not None]
+                      rules_list = [rules for df, rules in results if df is not None]
+
+                      if not dfs:
+                          raise ValueError(f"未能解析规则内容: {url}")
 
                       df = pd.concat(dfs, ignore_index=True)
-                      df = df[~df['pattern'].str.contains('#')].reset_index(drop=True)
+                      df = df[~df['pattern'].astype(str).str.contains('#', na=False)].reset_index(drop=True)
                       df = df[df['pattern'].isin(MAP_DICT.keys())].reset_index(drop=True)
                       df = df.drop_duplicates().reset_index(drop=True)
                       df['pattern'] = df['pattern'].replace(MAP_DICT)
@@ -315,6 +378,10 @@ jobs:
                           else:
                               rule_entry = {pattern: [address.strip() for address in addresses]}
                               result_rules["rules"].append(rule_entry)
+
+                      for extra_rules in rules_list:
+                          if extra_rules:
+                              result_rules["rules"].extend(extra_rules)
 
                       domain_entries = list(set(domain_entries))
                       if domain_entries:
@@ -344,6 +411,11 @@ jobs:
                   print(f'获取链接出错,已跳过:{link},原因:{str(e)}')
                   return None
 
+          # =========================================================
+          # 8) manifest 管理
+          #    - 记录本次自动生成/下载的文件
+          #    - 下次运行可自动删除旧文件
+          # =========================================================
           def load_manifest(manifest_path):
               if not os.path.exists(manifest_path):
                   return []
@@ -377,6 +449,11 @@ jobs:
                           os.remove(abs_srs)
                           print(f"删除旧下载 srs: {rel_srs}")
 
+          # =========================================================
+          # 9) 编译本地手动 json
+          #    这里只编译 geo / geosite 里的手动 json
+          #    如果你以后想让 other 目录里的 json 也自动编译，可以在这里加目录
+          # =========================================================
           def compile_manual_local_jsons(geo_output_dir, geosite_output_dir, managed_items):
               managed_set = set(managed_items)
               local_jsons = []
@@ -399,6 +476,9 @@ jobs:
                   else:
                       print(f"本地手动 json 编译失败: {rel_json}")
 
+          # =========================================================
+          # 10) 主流程
+          # =========================================================
           with open("singbox.txt", 'r', encoding='utf-8') as links_file:
               links = links_file.read().splitlines()
 
@@ -406,11 +486,11 @@ jobs:
 
           geo_output_dir = "./rule-set/geo"
           geosite_output_dir = "./rule-set/geosite"
-          other_rule_output_dir = "./rule-set/other-rule"
+          default_other_rule_output_dir = "./rule-set/other-rule"
 
           os.makedirs(geo_output_dir, exist_ok=True)
           os.makedirs(geosite_output_dir, exist_ok=True)
-          os.makedirs(other_rule_output_dir, exist_ok=True)
+          os.makedirs(default_other_rule_output_dir, exist_ok=True)
 
           previous_managed = load_manifest(MANIFEST_PATH)
           current_managed = []
@@ -418,11 +498,18 @@ jobs:
           for raw_link in links:
               link, mode, output_subdir = parse_special_link(raw_link)
 
+              # -----------------------------------------------------
+              # 特殊模式：下载 GitHub Release Assets
+              # 用法示例：
+              # https://.../releases/tag/xxx#release-assets@/rule-set/other
+              # -----------------------------------------------------
               if mode == "release-assets":
                   try:
-                      target_dir = other_rule_output_dir
-                      if output_subdir:
-                          target_dir = os.path.join("./rule-set", output_subdir)
+                      target_dir = normalize_repo_relative_dir(
+                          output_subdir,
+                          default_dir=default_other_rule_output_dir
+                      )
+                      os.makedirs(target_dir, exist_ok=True)
 
                       downloaded_files = download_github_release_assets(
                           link,
@@ -433,6 +520,9 @@ jobs:
                       print(f'下载 release assets 出错,已跳过:{raw_link},原因:{str(e)}')
                   continue
 
+              # -----------------------------------------------------
+              # 默认模式：原有规则转换
+              # -----------------------------------------------------
               result_file_name = parse_list_file(
                   raw_link,
                   geo_output_directory=geo_output_dir,
