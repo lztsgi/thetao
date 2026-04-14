@@ -1,2 +1,3 @@
 https://raw.githubusercontent.com/TG-Twilight/AWAvenue-Ads-Rule/main/Filters/AWAvenue-Ads-Rule-Clash-Classical.yaml@adblock
 https://raw.githubusercontent.com/juewuy/ShellCrash/dev/public/fake_ip_filter.list@fakeip-filter
+https://github.com/DustinWin/ruleset_geodata/releases/tag/mihomo-ruleset#release-assets@rule-set/other
