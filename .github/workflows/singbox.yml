@@ -54,6 +54,7 @@ jobs:
           import yaml
           import ipaddress
           from io import StringIO
+          from urllib.parse import urldefrag
 
           MAP_DICT = {
               'DOMAIN-SUFFIX': 'domain_suffix',
@@ -216,6 +217,67 @@ jobs:
               rc = os.system(f'sing-box rule-set compile --output "{srs_path}" "{json_path}"')
               return rc == 0, srs_path
 
+          def download_github_release_assets(tag_url, output_directory):
+              headers = {
+                  'User-Agent': 'Mozilla/5.0',
+                  'Accept': 'application/vnd.github+json'
+              }
+
+              clean_url, _ = urldefrag(tag_url)
+              m = re.match(r'https://github\.com/([^/]+)/([^/]+)/releases/tag/([^/#]+)', clean_url)
+              if not m:
+                  raise ValueError(f"不是有效的 GitHub release tag 链接: {tag_url}")
+
+              owner, repo, tag = m.groups()
+              api_url = f"https://api.github.com/repos/{owner}/{repo}/releases/tags/{tag}"
+
+              response = requests.get(api_url, headers=headers)
+              response.raise_for_status()
+              release_data = response.json()
+
+              os.makedirs(output_directory, exist_ok=True)
+
+              downloaded_files = []
+
+              for asset in release_data.get("assets", []):
+                  asset_name = (asset.get("name") or "").strip()
+                  download_url = asset.get("browser_download_url")
+
+                  if not asset_name or not download_url:
+                      continue
+
+                  if asset_name.startswith("Source code") or asset_name in {"Source code (zip)", "Source code (tar.gz)"}:
+                      continue
+
+                  save_path = os.path.join(output_directory, asset_name)
+
+                  asset_resp = requests.get(download_url, headers=headers, stream=True)
+                  asset_resp.raise_for_status()
+
+                  with open(save_path, "wb") as f:
+                      for chunk in asset_resp.iter_content(chunk_size=8192):
+                          if chunk:
+                              f.write(chunk)
+
+                  downloaded_files.append(os.path.relpath(save_path, "."))
+                  print(f"已下载 release asset: {os.path.relpath(save_path, '.')}")
+
+              return downloaded_files
+
+          def parse_special_link(raw_link):
+              clean_link, fragment = urldefrag(raw_link.strip())
+              mode = None
+              output_subdir = None
+
+              if fragment:
+                  parts = fragment.split('@')
+                  if parts:
+                      mode = parts[0].strip() or None
+                  if len(parts) > 1:
+                      output_subdir = parts[1].strip() or None
+
+              return clean_link, mode, output_subdir
+
           def parse_list_file(link, geo_output_directory, geosite_output_directory):
               try:
                   if '@' in link:
@@ -301,17 +363,19 @@ jobs:
 
           def remove_stale_managed_files(previous_items, current_items):
               stale_items = sorted(set(previous_items) - set(current_items))
-              for rel_json in stale_items:
-                  abs_json = os.path.join(".", rel_json)
-                  abs_srs = os.path.splitext(abs_json)[0] + ".srs"
+              for rel_path in stale_items:
+                  abs_path = os.path.join(".", rel_path)
 
-                  if os.path.exists(abs_json):
-                      os.remove(abs_json)
-                      print(f"删除旧下载 json: {rel_json}")
+                  if os.path.exists(abs_path):
+                      os.remove(abs_path)
+                      print(f"删除旧下载文件: {rel_path}")
 
-                  if os.path.exists(abs_srs):
-                      os.remove(abs_srs)
-                      print(f"删除旧下载 srs: {os.path.relpath(abs_srs, '.')}")
+                  if rel_path.endswith(".json"):
+                      abs_srs = os.path.splitext(abs_path)[0] + ".srs"
+                      rel_srs = os.path.relpath(abs_srs, ".")
+                      if rel_srs not in current_items and os.path.exists(abs_srs):
+                          os.remove(abs_srs)
+                          print(f"删除旧下载 srs: {rel_srs}")
 
           def compile_manual_local_jsons(geo_output_dir, geosite_output_dir, managed_items):
               managed_set = set(managed_items)
@@ -342,16 +406,35 @@ jobs:
 
           geo_output_dir = "./rule-set/geo"
           geosite_output_dir = "./rule-set/geosite"
+          other_rule_output_dir = "./rule-set/other-rule"
 
           os.makedirs(geo_output_dir, exist_ok=True)
           os.makedirs(geosite_output_dir, exist_ok=True)
+          os.makedirs(other_rule_output_dir, exist_ok=True)
 
           previous_managed = load_manifest(MANIFEST_PATH)
           current_managed = []
 
-          for link in links:
+          for raw_link in links:
+              link, mode, output_subdir = parse_special_link(raw_link)
+
+              if mode == "release-assets":
+                  try:
+                      target_dir = other_rule_output_dir
+                      if output_subdir:
+                          target_dir = os.path.join("./rule-set", output_subdir)
+
+                      downloaded_files = download_github_release_assets(
+                          link,
+                          target_dir
+                      )
+                      current_managed.extend(downloaded_files)
+                  except Exception as e:
+                      print(f'下载 release assets 出错,已跳过:{raw_link},原因:{str(e)}')
+                  continue
+
               result_file_name = parse_list_file(
-                  link,
+                  raw_link,
                   geo_output_directory=geo_output_dir,
                   geosite_output_directory=geosite_output_dir
               )
