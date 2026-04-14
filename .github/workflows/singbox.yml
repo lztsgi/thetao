@@ -82,12 +82,9 @@ jobs:
           }
 
           IP_ONLY_KEYS = {'ip_cidr', 'source_ip_cidr', 'geoip'}
-          MANIFEST_PATH = "./rule-set/.generated-manifest.json"
 
           # =========================================================
           # 2) 读取远程规则文件
-          #    - read_yaml_from_url: 处理 yaml/txt payload
-          #    - read_list_from_url: 处理普通列表
           # =========================================================
           def read_yaml_from_url(url):
               headers = {'User-Agent': 'Mozilla/5.0'}
@@ -251,33 +248,20 @@ jobs:
               return clean_link, mode, output_subdir
 
           def normalize_repo_relative_dir(path_value, default_dir="./rule-set/other-rule"):
-              """
-              把用户写在 singbox.txt 里的目录，统一规范成当前 working-directory 下的相对路径。
-              例如：
-              other-rule            -> ./rule-set/other-rule
-              rule-set/other        -> ./rule-set/other
-              /rule-set/other       -> ./rule-set/other
-              ./rule-set/other      -> ./rule-set/other
-              """
-
               if not path_value:
                   return os.path.normpath(default_dir)
 
               p = path_value.strip().replace("\\", "/")
 
-              # 去掉开头的 /，避免被当成系统绝对路径
               while p.startswith("/"):
                   p = p[1:]
 
-              # 去掉开头的 ./
               while p.startswith("./"):
                   p = p[2:]
 
-              # 空值保护
               if not p:
                   return os.path.normpath(default_dir)
 
-              # 只写 other-rule 这种简写时，默认放到 ./rule-set/ 下
               if not p.startswith("rule-set/"):
                   p = f"rule-set/{p}"
 
@@ -285,8 +269,6 @@ jobs:
 
           # =========================================================
           # 6) 下载 GitHub Release Assets
-          #    - 自动排除 Source code
-          #    - 下载到 singbox 工作目录内的指定目录
           # =========================================================
           def download_github_release_assets(tag_url, output_directory):
               headers = {
@@ -308,8 +290,6 @@ jobs:
 
               os.makedirs(output_directory, exist_ok=True)
 
-              downloaded_files = []
-
               for asset in release_data.get("assets", []):
                   asset_name = (asset.get("name") or "").strip()
                   download_url = asset.get("browser_download_url")
@@ -330,10 +310,7 @@ jobs:
                           if chunk:
                               f.write(chunk)
 
-                  downloaded_files.append(os.path.relpath(save_path, "."))
                   print(f"已下载 release asset: {os.path.relpath(save_path, '.')}")
-
-              return downloaded_files
 
           # =========================================================
           # 7) 原有规则转换逻辑
@@ -412,50 +389,9 @@ jobs:
                   return None
 
           # =========================================================
-          # 8) manifest 管理
-          #    - 记录本次自动生成/下载的文件
-          #    - 下次运行可自动删除旧文件
+          # 8) 编译本地手动 json
           # =========================================================
-          def load_manifest(manifest_path):
-              if not os.path.exists(manifest_path):
-                  return []
-              try:
-                  with open(manifest_path, "r", encoding="utf-8") as f:
-                      data = json.load(f)
-                  if isinstance(data, list):
-                      return data
-                  return []
-              except Exception:
-                  return []
-
-          def save_manifest(manifest_path, items):
-              os.makedirs(os.path.dirname(manifest_path), exist_ok=True)
-              with open(manifest_path, "w", encoding="utf-8") as f:
-                  json.dump(sorted(items), f, ensure_ascii=False, indent=2)
-
-          def remove_stale_managed_files(previous_items, current_items):
-              stale_items = sorted(set(previous_items) - set(current_items))
-              for rel_path in stale_items:
-                  abs_path = os.path.join(".", rel_path)
-
-                  if os.path.exists(abs_path):
-                      os.remove(abs_path)
-                      print(f"删除旧下载文件: {rel_path}")
-
-                  if rel_path.endswith(".json"):
-                      abs_srs = os.path.splitext(abs_path)[0] + ".srs"
-                      rel_srs = os.path.relpath(abs_srs, ".")
-                      if rel_srs not in current_items and os.path.exists(abs_srs):
-                          os.remove(abs_srs)
-                          print(f"删除旧下载 srs: {rel_srs}")
-
-          # =========================================================
-          # 9) 编译本地手动 json
-          #    这里只编译 geo / geosite 里的手动 json
-          #    如果你以后想让 other 目录里的 json 也自动编译，可以在这里加目录
-          # =========================================================
-          def compile_manual_local_jsons(geo_output_dir, geosite_output_dir, managed_items):
-              managed_set = set(managed_items)
+          def compile_manual_local_jsons(geo_output_dir, geosite_output_dir):
               local_jsons = []
 
               for base_dir in [geo_output_dir, geosite_output_dir]:
@@ -466,7 +402,7 @@ jobs:
                           rel_path = os.path.relpath(os.path.join(base_dir, entry), ".")
                           local_jsons.append(rel_path)
 
-              manual_jsons = sorted(set(local_jsons) - managed_set)
+              manual_jsons = sorted(set(local_jsons))
 
               for rel_json in manual_jsons:
                   abs_json = os.path.join(".", rel_json)
@@ -477,7 +413,7 @@ jobs:
                       print(f"本地手动 json 编译失败: {rel_json}")
 
           # =========================================================
-          # 10) 主流程
+          # 9) 主流程
           # =========================================================
           with open("singbox.txt", 'r', encoding='utf-8') as links_file:
               links = links_file.read().splitlines()
@@ -492,17 +428,9 @@ jobs:
           os.makedirs(geosite_output_dir, exist_ok=True)
           os.makedirs(default_other_rule_output_dir, exist_ok=True)
 
-          previous_managed = load_manifest(MANIFEST_PATH)
-          current_managed = []
-
           for raw_link in links:
               link, mode, output_subdir = parse_special_link(raw_link)
 
-              # -----------------------------------------------------
-              # 特殊模式：下载 GitHub Release Assets
-              # 用法示例：
-              # https://.../releases/tag/xxx#release-assets@/rule-set/other
-              # -----------------------------------------------------
               if mode == "release-assets":
                   try:
                       target_dir = normalize_repo_relative_dir(
@@ -511,29 +439,21 @@ jobs:
                       )
                       os.makedirs(target_dir, exist_ok=True)
 
-                      downloaded_files = download_github_release_assets(
+                      download_github_release_assets(
                           link,
                           target_dir
                       )
-                      current_managed.extend(downloaded_files)
                   except Exception as e:
                       print(f'下载 release assets 出错,已跳过:{raw_link},原因:{str(e)}')
                   continue
 
-              # -----------------------------------------------------
-              # 默认模式：原有规则转换
-              # -----------------------------------------------------
-              result_file_name = parse_list_file(
+              parse_list_file(
                   raw_link,
                   geo_output_directory=geo_output_dir,
                   geosite_output_directory=geosite_output_dir
               )
-              if result_file_name:
-                  current_managed.append(result_file_name)
 
-          remove_stale_managed_files(previous_managed, current_managed)
-          compile_manual_local_jsons(geo_output_dir, geosite_output_dir, current_managed)
-          save_manifest(MANIFEST_PATH, current_managed)
+          compile_manual_local_jsons(geo_output_dir, geosite_output_dir)
           EOF
 
       - name: Commit and push config
