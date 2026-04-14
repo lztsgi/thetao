@@ -1,2 +1,2 @@
 https://raw.githubusercontent.com/TG-Twilight/AWAvenue-Ads-Rule/main/Filters/AWAvenue-Ads-Rule-Clash-Classical.yaml@adblock
-https://github.com/DustinWin/ruleset_geodata/releases/tag/sing-box-ruleset#release-assets@/rule-set/rule-other
+https://github.com/DustinWin/ruleset_geodata/releases/tag/sing-box-ruleset#release-assets@/rule-set/other
