@@ -81,13 +81,14 @@ jobs:
             echo "${name%.*}"
           }
 
-          ensure_parent_dir() {
-            local path="$1"
-            mkdir -p "$(dirname "$path")"
+          ensure_dir() {
+            local dir="$1"
+            mkdir -p "$dir"
           }
 
           ######################################################################
-          # 模块 2：解析 mihomo.txt 行
+          # 模块 2：解析 mihomo.txt
+          #
           # 支持：
           # 1) URL
           # 2) URL@filename
@@ -103,7 +104,6 @@ jobs:
             PARSED_MODE="normal"   # normal | release-assets
             PARSED_KIND="auto"     # auto | filename | dir
 
-            # 去掉首尾空白
             line="$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
 
             if [[ "$line" == *"@"* ]]; then
@@ -129,7 +129,7 @@ jobs:
           }
 
           ######################################################################
-          # 模块 3：按你原逻辑判断 domain / ipcidr
+          # 模块 3：规则类型识别
           ######################################################################
 
           detect_behavior() {
@@ -169,9 +169,9 @@ jobs:
 
             raw_file="$CACHE_DIR/${filename}.txt"
 
-            echo "Processing: $url -> $filename"
+            echo "Processing normal url: $url -> $filename"
 
-            if ! curl -sL -f --max-time 60 "$url" -o "$raw_file"; then
+            if ! curl -sL -f --max-time 120 "$url" -o "$raw_file"; then
               echo "Error: Failed to download $url"
               rm -f "$raw_file"
               return 0
@@ -196,10 +196,11 @@ jobs:
             cp "$raw_file" "$dest_txt"
 
             if ./mihomo-bin convert-ruleset "$behavior" text "$dest_txt" "$dest_mrs"; then
-              MRS_SIZE="$(stat -c%s "$dest_mrs" 2>/dev/null || echo "0")"
-              echo "✓ Success: $filename ($behavior) -> ${MRS_SIZE} bytes"
+              local mrs_size
+              mrs_size="$(stat -c%s "$dest_mrs" 2>/dev/null || echo "0")"
+              echo "Success: $filename ($behavior) -> ${mrs_size} bytes"
             else
-              echo "⚠ Warning: convert-ruleset failed for $filename ($behavior), keep raw txt only"
+              echo "Warning: convert-ruleset failed for $filename ($behavior), keep raw txt only"
               rm -f "$dest_mrs"
             fi
 
@@ -207,11 +208,7 @@ jobs:
           }
 
           ######################################################################
-          # 模块 5：GitHub release assets 拉取
-          # - 仅在 URL 带 #release-assets 时启用
-          # - 下载到指定目录（如 rule-set/other-rule）
-          # - 排除 Source code
-          # - 对文本规则尝试转 mrs；其他文件原样保留
+          # 模块 5：release assets 下载
           ######################################################################
 
           is_convertible_rule_file() {
@@ -237,9 +234,9 @@ jobs:
             if ./mihomo-bin convert-ruleset "$behavior" text "$saved_file" "$mrs_file"; then
               local size
               size="$(stat -c%s "$mrs_file" 2>/dev/null || echo "0")"
-              echo "✓ Converted release asset: $filename ($behavior) -> ${size} bytes"
+              echo "Converted release asset: $filename ($behavior) -> ${size} bytes"
             else
-              echo "⚠ Warning: convert-ruleset failed for release asset $filename, keep raw file only"
+              echo "Warning: convert-ruleset failed for release asset $filename, keep raw file only"
               rm -f "$mrs_file"
             fi
           }
@@ -248,39 +245,55 @@ jobs:
             local url="$1"
             local target_subdir="$2"
 
-            local page_file
-            local asset_list
             local final_dir
+            local api_url
+            local json_file
+            local asset_list
 
             if [[ -z "$target_subdir" ]]; then
               target_subdir="rule-set/other-rule"
             fi
 
             final_dir="mihomo/${target_subdir}"
-            mkdir -p "$final_dir"
+            ensure_dir "$final_dir"
 
-            page_file="$CACHE_DIR/release_page_$(date +%s%N).html"
+            json_file="$CACHE_DIR/release_api_$(date +%s%N).json"
             asset_list="$CACHE_DIR/release_assets_$(date +%s%N).txt"
 
             echo "Fetching release assets: $url -> $final_dir"
 
-            if ! curl -sL -f --max-time 60 "$url" -o "$page_file"; then
-              echo "Error: Failed to fetch release page: $url"
-              rm -f "$page_file" "$asset_list"
+            if [[ "$url" =~ ^https://github\.com/([^/]+)/([^/]+)/releases/tag/(.+)$ ]]; then
+              local owner repo tag
+              owner="${BASH_REMATCH[1]}"
+              repo="${BASH_REMATCH[2]}"
+              tag="${BASH_REMATCH[3]}"
+              api_url="https://api.github.com/repos/${owner}/${repo}/releases/tags/${tag}"
+            else
+              echo "Error: Unsupported release url format: $url"
               return 0
             fi
 
-            # 提取 GitHub 浏览器下载链接
-            grep -oE '/DustinWin/ruleset_geodata/releases/download/[^"]+' "$page_file" | \
-              sed 's/&amp;/\&/g' | \
-              sed 's#^#https://github.com#' | \
-              grep -Ev '/(Source code \(zip\)|Source code \(tar\.gz\))$' | \
-              grep -Ev '\/source-code(\.zip|\.tar\.gz)?$' | \
+            if ! curl -sL -f \
+                -H "Accept: application/vnd.github+json" \
+                -H "X-GitHub-Api-Version: 2022-11-28" \
+                --max-time 120 \
+                "$api_url" -o "$json_file"; then
+              echo "Error: Failed to fetch GitHub release API: $api_url"
+              rm -f "$json_file" "$asset_list"
+              return 0
+            fi
+
+            grep -oE '"browser_download_url":[[:space:]]*"[^"]+"' "$json_file" | \
+              sed -E 's/^"browser_download_url":[[:space:]]*"//; s/"$//' | \
+              grep -Ev '/(source\.zip|source\.tar\.gz)$' | \
               sort -u > "$asset_list" || true
 
             if [[ ! -s "$asset_list" ]]; then
-              echo "Warning: No release assets found for $url"
-              rm -f "$page_file" "$asset_list"
+              echo "Warning: No release assets found from API for $url"
+              echo "API response preview:"
+              head -c 800 "$json_file" || true
+              echo
+              rm -f "$json_file" "$asset_list"
               return 0
             fi
 
@@ -289,13 +302,14 @@ jobs:
 
               local asset_name
               local asset_path
-              asset_name="$(get_basename_no_query "$asset_url")"
+
+              asset_name="$(basename "${asset_url%%\?*}")"
               asset_name="$(sanitize_name "$asset_name")"
               asset_path="$final_dir/$asset_name"
 
               echo "Downloading asset: $asset_url -> $asset_path"
 
-              if ! curl -sL -f --max-time 120 "$asset_url" -o "$asset_path"; then
+              if ! curl -sL -f --max-time 300 "$asset_url" -o "$asset_path"; then
                 echo "Warning: Failed to download asset $asset_url"
                 rm -f "$asset_path"
                 continue
@@ -307,13 +321,12 @@ jobs:
                 continue
               fi
 
-              # 只对文本规则文件尝试转 mrs，其他文件原样保留
               if is_convertible_rule_file "$asset_name"; then
                 try_convert_downloaded_rule "$asset_path"
               fi
             done < "$asset_list"
 
-            rm -f "$page_file" "$asset_list"
+            rm -f "$json_file" "$asset_list"
           }
 
           ######################################################################
@@ -335,6 +348,8 @@ jobs:
 
           ######################################################################
           # 模块 7：回填目录
+          # 只回填 geosite/geoip/classical
+          # other-rule 这种目录是直接写到正式目录，不参与临时替换
           ######################################################################
 
           rm -rf "$TARGET_GEOSITE" "$TARGET_GEOIP"
@@ -355,17 +370,17 @@ jobs:
           TOTAL_FILES=0
           TOTAL_SIZE=0
 
-          for f in mihomo/rule-set/geoip/*.mrs mihomo/rule-set/geosite/*.mrs mihomo/rule-set/other-rule/*.mrs; do
+          while IFS= read -r f; do
             [ -f "$f" ] || continue
             REL="${f#mihomo/}"
             SIZE="$(stat -c%s "$f" 2>/dev/null || echo "0")"
             echo "  $REL -> ${SIZE} bytes"
             TOTAL_FILES=$((TOTAL_FILES + 1))
             TOTAL_SIZE=$((TOTAL_SIZE + SIZE))
-          done
+          done < <(find mihomo/rule-set -type f -name "*.mrs" | sort)
 
           echo
-          echo "=== Other downloaded files ==="
+          echo "=== Raw downloaded files ==="
           find mihomo/rule-set -type f ! -name "*.mrs" | sort || true
 
           echo
