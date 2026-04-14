@@ -55,87 +55,288 @@ jobs:
           fi
 
           rm -rf "$TMP_ROOT" "$CACHE_DIR"
-          mkdir -p "$TMP_GEOSITE" "$TMP_GEOIP" "$TARGET_CLASSICAL" "$CACHE_DIR"
+          mkdir -p "$TMP_GEOSITE" "$TMP_GEOIP" "$TARGET_CLASSICAL" "$CACHE_DIR" "$TARGET_ROOT"
+
+          ######################################################################
+          # 模块 1：基础工具
+          ######################################################################
+
+          sanitize_name() {
+            local name="$1"
+            name="$(echo "$name" | tr -cd '[:alnum:]_.-')"
+            [[ -z "$name" ]] && name="rule_$(date +%s)"
+            echo "$name"
+          }
+
+          get_basename_no_query() {
+            local url="$1"
+            local name
+            name="$(basename "$url")"
+            name="${name%%\?*}"
+            echo "$name"
+          }
+
+          strip_ext() {
+            local name="$1"
+            echo "${name%.*}"
+          }
+
+          ensure_parent_dir() {
+            local path="$1"
+            mkdir -p "$(dirname "$path")"
+          }
+
+          ######################################################################
+          # 模块 2：解析 mihomo.txt 行
+          # 支持：
+          # 1) URL
+          # 2) URL@filename
+          # 3) URL@dir/subdir
+          # 4) URL#release-assets@dir/subdir
+          ######################################################################
+
+          parse_line() {
+            local line="$1"
+
+            PARSED_URL=""
+            PARSED_TAIL=""
+            PARSED_MODE="normal"   # normal | release-assets
+            PARSED_KIND="auto"     # auto | filename | dir
+
+            # 去掉首尾空白
+            line="$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+
+            if [[ "$line" == *"@"* ]]; then
+              PARSED_URL="${line%@*}"
+              PARSED_TAIL="${line##*@}"
+            else
+              PARSED_URL="$line"
+              PARSED_TAIL=""
+            fi
+
+            if [[ "$PARSED_URL" == *"#release-assets" ]]; then
+              PARSED_MODE="release-assets"
+              PARSED_URL="${PARSED_URL%\#release-assets}"
+            fi
+
+            if [[ -n "$PARSED_TAIL" ]]; then
+              if [[ "$PARSED_TAIL" == */* ]]; then
+                PARSED_KIND="dir"
+              else
+                PARSED_KIND="filename"
+              fi
+            fi
+          }
+
+          ######################################################################
+          # 模块 3：按你原逻辑判断 domain / ipcidr
+          ######################################################################
+
+          detect_behavior() {
+            local raw_file="$1"
+
+            if grep -qE "^[[:space:]]*(IP-CIDR|IP-CIDR6|IP-ASN|SRC-IP-CIDR)" "$raw_file" || \
+               grep -qE "^[[:space:]]*-[[:space:]]+(IP-CIDR|IP-CIDR6|IP-ASN|SRC-IP-CIDR)" "$raw_file" || \
+               grep -qE "^[[:space:]]*([0-9]{1,3}\.){3}[0-9]{1,3}/[0-9]{1,2}[[:space:]]*$" "$raw_file" || \
+               grep -qE "^[[:space:]]*([0-9a-fA-F]{0,4}:){2,7}[0-9a-fA-F]{0,4}/[0-9]{1,3}[[:space:]]*$" "$raw_file"; then
+              echo "ipcidr"
+            else
+              echo "domain"
+            fi
+          }
+
+          ######################################################################
+          # 模块 4：普通链接下载并按原逻辑转换
+          ######################################################################
+
+          process_normal_url() {
+            local url="$1"
+            local tail="$2"
+            local kind="$3"
+
+            local filename=""
+            local raw_file=""
+            local behavior=""
+            local dest_txt=""
+            local dest_mrs=""
+
+            if [[ "$kind" == "filename" ]]; then
+              filename="$(sanitize_name "$tail")"
+            else
+              filename="$(strip_ext "$(get_basename_no_query "$url")")"
+              filename="$(sanitize_name "$filename")"
+            fi
+
+            raw_file="$CACHE_DIR/${filename}.txt"
+
+            echo "Processing: $url -> $filename"
+
+            if ! curl -sL -f --max-time 60 "$url" -o "$raw_file"; then
+              echo "Error: Failed to download $url"
+              rm -f "$raw_file"
+              return 0
+            fi
+
+            if [[ ! -s "$raw_file" ]]; then
+              echo "Error: Downloaded file is empty for $url"
+              rm -f "$raw_file"
+              return 0
+            fi
+
+            behavior="$(detect_behavior "$raw_file")"
+
+            if [[ "$behavior" == "ipcidr" ]]; then
+              dest_txt="$TMP_GEOIP/${filename}.txt"
+              dest_mrs="$TMP_GEOIP/${filename}.mrs"
+            else
+              dest_txt="$TMP_GEOSITE/${filename}.txt"
+              dest_mrs="$TMP_GEOSITE/${filename}.mrs"
+            fi
+
+            cp "$raw_file" "$dest_txt"
+
+            if ./mihomo-bin convert-ruleset "$behavior" text "$dest_txt" "$dest_mrs"; then
+              MRS_SIZE="$(stat -c%s "$dest_mrs" 2>/dev/null || echo "0")"
+              echo "✓ Success: $filename ($behavior) -> ${MRS_SIZE} bytes"
+            else
+              echo "⚠ Warning: convert-ruleset failed for $filename ($behavior), keep raw txt only"
+              rm -f "$dest_mrs"
+            fi
+
+            rm -f "$raw_file"
+          }
+
+          ######################################################################
+          # 模块 5：GitHub release assets 拉取
+          # - 仅在 URL 带 #release-assets 时启用
+          # - 下载到指定目录（如 rule-set/other-rule）
+          # - 排除 Source code
+          # - 对文本规则尝试转 mrs；其他文件原样保留
+          ######################################################################
+
+          is_convertible_rule_file() {
+            local file="$1"
+            local lower
+            lower="$(echo "$file" | tr '[:upper:]' '[:lower:]')"
+            [[ "$lower" =~ \.(list|txt|yaml|yml)$ ]]
+          }
+
+          try_convert_downloaded_rule() {
+            local saved_file="$1"
+
+            local filename
+            local stem
+            local behavior
+            local mrs_file
+
+            filename="$(basename "$saved_file")"
+            stem="${filename%.*}"
+            behavior="$(detect_behavior "$saved_file")"
+            mrs_file="$(dirname "$saved_file")/${stem}.mrs"
+
+            if ./mihomo-bin convert-ruleset "$behavior" text "$saved_file" "$mrs_file"; then
+              local size
+              size="$(stat -c%s "$mrs_file" 2>/dev/null || echo "0")"
+              echo "✓ Converted release asset: $filename ($behavior) -> ${size} bytes"
+            else
+              echo "⚠ Warning: convert-ruleset failed for release asset $filename, keep raw file only"
+              rm -f "$mrs_file"
+            fi
+          }
+
+          fetch_release_assets() {
+            local url="$1"
+            local target_subdir="$2"
+
+            local page_file
+            local asset_list
+            local final_dir
+
+            if [[ -z "$target_subdir" ]]; then
+              target_subdir="rule-set/other-rule"
+            fi
+
+            final_dir="mihomo/${target_subdir}"
+            mkdir -p "$final_dir"
+
+            page_file="$CACHE_DIR/release_page_$(date +%s%N).html"
+            asset_list="$CACHE_DIR/release_assets_$(date +%s%N).txt"
+
+            echo "Fetching release assets: $url -> $final_dir"
+
+            if ! curl -sL -f --max-time 60 "$url" -o "$page_file"; then
+              echo "Error: Failed to fetch release page: $url"
+              rm -f "$page_file" "$asset_list"
+              return 0
+            fi
+
+            # 提取 GitHub 浏览器下载链接
+            grep -oE '/DustinWin/ruleset_geodata/releases/download/[^"]+' "$page_file" | \
+              sed 's/&amp;/\&/g' | \
+              sed 's#^#https://github.com#' | \
+              grep -Ev '/(Source code \(zip\)|Source code \(tar\.gz\))$' | \
+              grep -Ev '\/source-code(\.zip|\.tar\.gz)?$' | \
+              sort -u > "$asset_list" || true
+
+            if [[ ! -s "$asset_list" ]]; then
+              echo "Warning: No release assets found for $url"
+              rm -f "$page_file" "$asset_list"
+              return 0
+            fi
+
+            while IFS= read -r asset_url || [[ -n "$asset_url" ]]; do
+              [[ -z "${asset_url//[[:space:]]/}" ]] && continue
+
+              local asset_name
+              local asset_path
+              asset_name="$(get_basename_no_query "$asset_url")"
+              asset_name="$(sanitize_name "$asset_name")"
+              asset_path="$final_dir/$asset_name"
+
+              echo "Downloading asset: $asset_url -> $asset_path"
+
+              if ! curl -sL -f --max-time 120 "$asset_url" -o "$asset_path"; then
+                echo "Warning: Failed to download asset $asset_url"
+                rm -f "$asset_path"
+                continue
+              fi
+
+              if [[ ! -s "$asset_path" ]]; then
+                echo "Warning: Empty asset skipped: $asset_name"
+                rm -f "$asset_path"
+                continue
+              fi
+
+              # 只对文本规则文件尝试转 mrs，其他文件原样保留
+              if is_convertible_rule_file "$asset_name"; then
+                try_convert_downloaded_rule "$asset_path"
+              fi
+            done < "$asset_list"
+
+            rm -f "$page_file" "$asset_list"
+          }
+
+          ######################################################################
+          # 模块 6：主循环
+          ######################################################################
 
           while IFS= read -r line || [[ -n "$line" ]]; do
             [[ "$line" =~ ^[[:space:]]*#.*$ ]] && continue
             [[ -z "${line//[[:space:]]/}" ]] && continue
 
-            URL=""
-            FILENAME=""
+            parse_line "$line"
 
-            if [[ "$line" == *"@"* ]]; then
-              LAST_PART="${line##*@}"
-              if [[ "$LAST_PART" != */* ]]; then
-                URL="${line%@*}"
-                FILENAME="$LAST_PART"
-              else
-                URL="$line"
-                FILENAME="$(basename "$URL")"
-                FILENAME="${FILENAME%%\?*}"
-                FILENAME="${FILENAME%.*}"
-              fi
+            if [[ "$PARSED_MODE" == "release-assets" ]]; then
+              fetch_release_assets "$PARSED_URL" "$PARSED_TAIL"
             else
-              URL="$line"
-              FILENAME="$(basename "$URL")"
-              FILENAME="${FILENAME%%\?*}"
-              FILENAME="${FILENAME%.*}"
+              process_normal_url "$PARSED_URL" "$PARSED_TAIL" "$PARSED_KIND"
             fi
-
-            FILENAME="$(echo "$FILENAME" | tr -cd '[:alnum:]_-')"
-            [[ -z "$FILENAME" ]] && FILENAME="rule_$(date +%s)"
-
-            RAW_FILE="$CACHE_DIR/${FILENAME}.txt"
-            DEST_TXT=""
-            DEST_MRS=""
-            BEHAVIOR=""
-
-            echo "Processing: $URL -> $FILENAME"
-
-            if ! curl -sL -f --max-time 30 "$URL" -o "$RAW_FILE"; then
-              echo "Error: Failed to download $URL"
-              rm -f "$RAW_FILE"
-              continue
-            fi
-
-            if [[ ! -s "$RAW_FILE" ]]; then
-              echo "Error: Downloaded file is empty for $URL"
-              rm -f "$RAW_FILE"
-              continue
-            fi
-
-            # 按你原版逻辑判断：
-            # 只要文件里命中 IP 特征，就归 geoip；否则归 geosite
-            if grep -qE "^[[:space:]]*(IP-CIDR|IP-CIDR6|IP-ASN|SRC-IP-CIDR)" "$RAW_FILE" || \
-               grep -qE "^[[:space:]]*-[[:space:]]+(IP-CIDR|IP-CIDR6|IP-ASN|SRC-IP-CIDR)" "$RAW_FILE" || \
-               grep -qE "^[[:space:]]*([0-9]{1,3}\.){3}[0-9]{1,3}/[0-9]{1,2}[[:space:]]*$" "$RAW_FILE" || \
-               grep -qE "^[[:space:]]*([0-9a-fA-F]{0,4}:){2,7}[0-9a-fA-F]{0,4}/[0-9]{1,3}[[:space:]]*$" "$RAW_FILE"; then
-              BEHAVIOR="ipcidr"
-              DEST_TXT="$TMP_GEOIP/${FILENAME}.txt"
-              DEST_MRS="$TMP_GEOIP/${FILENAME}.mrs"
-            else
-              BEHAVIOR="domain"
-              DEST_TXT="$TMP_GEOSITE/${FILENAME}.txt"
-              DEST_MRS="$TMP_GEOSITE/${FILENAME}.mrs"
-            fi
-
-            # 原文不改，直接落盘成 .txt
-            cp "$RAW_FILE" "$DEST_TXT"
-
-            # 只做一件事：尝试从原文 txt 生成 mrs
-            # 如果源本身不符合 mihomo 可直接编译的 text 格式，就保留 txt，不洗内容硬改
-            if ./mihomo-bin convert-ruleset "$BEHAVIOR" text "$DEST_TXT" "$DEST_MRS"; then
-              MRS_SIZE="$(stat -c%s "$DEST_MRS" 2>/dev/null || echo "0")"
-              echo "✓ Success: $FILENAME ($BEHAVIOR) -> ${MRS_SIZE} bytes"
-            else
-              echo "⚠ Warning: convert-ruleset failed for $FILENAME ($BEHAVIOR), keep raw txt only"
-              rm -f "$DEST_MRS"
-            fi
-
-            rm -f "$RAW_FILE"
           done < "$INPUT_FILE"
 
-          mkdir -p "$TARGET_ROOT"
+          ######################################################################
+          # 模块 7：回填目录
+          ######################################################################
+
           rm -rf "$TARGET_GEOSITE" "$TARGET_GEOIP"
           mv "$TMP_GEOSITE" "$TARGET_GEOSITE"
           mv "$TMP_GEOIP" "$TARGET_GEOIP"
@@ -154,14 +355,18 @@ jobs:
           TOTAL_FILES=0
           TOTAL_SIZE=0
 
-          for f in mihomo/rule-set/geoip/*.mrs mihomo/rule-set/geosite/*.mrs; do
+          for f in mihomo/rule-set/geoip/*.mrs mihomo/rule-set/geosite/*.mrs mihomo/rule-set/other-rule/*.mrs; do
             [ -f "$f" ] || continue
-            REL="${f#mihomo/rule-set/}"
+            REL="${f#mihomo/}"
             SIZE="$(stat -c%s "$f" 2>/dev/null || echo "0")"
             echo "  $REL -> ${SIZE} bytes"
             TOTAL_FILES=$((TOTAL_FILES + 1))
             TOTAL_SIZE=$((TOTAL_SIZE + SIZE))
           done
+
+          echo
+          echo "=== Other downloaded files ==="
+          find mihomo/rule-set -type f ! -name "*.mrs" | sort || true
 
           echo
           echo "Total mrs files: $TOTAL_FILES, $TOTAL_SIZE bytes"
