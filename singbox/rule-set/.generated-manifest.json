@@ -1,11 +1,3 @@
 [
-  "rule-set/geosite/adblock.json",
-  "rule-set/geosite/ads.json",
-  "rule-set/geosite/ai.json",
-  "rule-set/geosite/apple-cn.json",
-  "rule-set/geosite/games-cn.json",
-  "rule-set/geosite/google-cn.json",
-  "rule-set/geosite/microsoft-cn.json",
-  "rule-set/geosite/private.json",
-  "rule-set/geosite/trackerslist.json"
+  "rule-set/geosite/adblock.json"
 ]
