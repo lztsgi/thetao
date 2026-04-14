@@ -230,34 +230,6 @@ jobs:
                       url = link
                       base_filename = os.path.basename(url).split('.')[0]
 
-                  # 只新增这里：远程 json 直接下载原样保存，不走原有列表转换
-                  if url.lower().endswith(".json"):
-                      headers = {'User-Agent': 'Mozilla/5.0'}
-                      response = requests.get(url, headers=headers)
-                      response.raise_for_status()
-
-                      json_data = response.json()
-
-                      output_directory = choose_output_directory(
-                          json_data,
-                          geo_output_directory,
-                          geosite_output_directory
-                      )
-
-                      os.makedirs(output_directory, exist_ok=True)
-
-                      file_name = os.path.join(output_directory, f"{base_filename}.json")
-                      with open(file_name, 'w', encoding='utf-8') as output_file:
-                          result_rules_str = json.dumps(sort_dict(json_data), ensure_ascii=False, indent=2)
-                          result_rules_str = result_rules_str.replace('\\\\', '\\')
-                          output_file.write(result_rules_str)
-
-                      ok, srs_path = compile_json_to_srs(file_name)
-                      if not ok:
-                          print(f"编译失败: {file_name}")
-
-                      return os.path.relpath(file_name, ".")
-
                   with concurrent.futures.ThreadPoolExecutor() as executor:
                       results = list(executor.map(parse_and_convert_to_dataframe, [url]))
                       dfs = [df for df, rules in results]
