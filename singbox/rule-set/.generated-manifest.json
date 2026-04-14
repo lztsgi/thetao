@@ -1,3 +1,4 @@
 [
-  "rule-set/geosite/adblock.json"
+  "rule-set/geosite/adblock.json",
+  "rule-set/geosite/private.json"
 ]
