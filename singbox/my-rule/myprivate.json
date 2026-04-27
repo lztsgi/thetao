@@ -3,12 +3,7 @@
   "rules": [
     {
       "domain": [
-        "app.n26.com",
-        "get.n26.com",
-        "docs.n26.com",
-        "support.n26.com",
-        "aisp.tech26.de",
-        "pisp.tech26.de"
+        "prodregistryv2.org"
       ],
       "domain_suffix": [
         "n26.com",
