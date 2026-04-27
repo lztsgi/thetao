@@ -2,9 +2,6 @@
   "version": 3,
   "rules": [
     {
-      "domain": [
-        "prodregistryv2.org"
-      ],
       "domain_suffix": [
         "n26.com",
         "tech26.de"
