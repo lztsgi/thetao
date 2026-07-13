@@ -1,25 +1,28 @@
-# Wi-Fi Calling / VoWiFi / ePDG
+# Wi-Fi Calling / VoWiFi / ePDG (UK - O2/giffgaff & Vodafone/VOXI)
 # mihomo rule-provider: behavior=classical, format=text
 
 # =========================
-# UK - O2 / giffgaff
+# 英国 3GPP 核心网统一收口
 # =========================
-# ePDG / Wi-Fi Calling
-DOMAIN-SUFFIX,giffgaff.com
-DOMAIN-SUFFIX,epdg.epc.mnc010.mcc234.pub.3gppnetwork.org
-# O2 / giffgaff IP
-IP-CIDR,87.194.0.0/16,no-resolve
+# 覆盖 O2/giffgaff (mnc010) 与 Vodafone/VOXI (mnc015) 及其相关 ss/geo 子域名
+DOMAIN-SUFFIX,mcc234.pub.3gppnetwork.org
 
 # =========================
-# UK - Vodafone / VOXI
+# 运营商特定服务域名
 # =========================
-# ePDG / Wi-Fi Calling
+# O2 / giffgaff
+DOMAIN-SUFFIX,giffgaff.com
+# Vodafone / VOXI
 DOMAIN-SUFFIX,voxi.co.uk
 DOMAIN-SUFFIX,entsrv-uk.vodafone.com
 DOMAIN-SUFFIX,vuk-gto.prod.ondemandconnectivity.com
-DOMAIN-SUFFIX,epdg.epc.mnc015.mcc234.pub.3gppnetwork.org
-DOMAIN-SUFFIX,ss.epdg.epc.mnc015.mcc234.pub.3gppnetwork.org
-DOMAIN-SUFFIX,ss.epdg.epc.geo.mnc015.mcc234.pub.3gppnetwork.org
+
+# =========================
+# 运营商直属 IP 资产
+# =========================
+# O2 / giffgaff IP
+IP-CIDR,87.194.0.0/16,no-resolve
+
 # Vodafone / VOXI IP
 IP-CIDR,46.68.0.0/17,no-resolve
 IP-CIDR,62.141.11.0/24,no-resolve
