@@ -1,24 +1,2 @@
 # Wi-Fi Calling / VoWiFi / ePDG
 # mihomo rule-provider: behavior=classical, format=text
-
-# =========================
-# DE - Vodafone
-# =========================
-# ePDG / Wi-Fi Calling
-DOMAIN-SUFFIX,vodafone.de
-DOMAIN-SUFFIX,vodafone-ip.de
-DOMAIN-SUFFIX,vodafone-dns.net
-DOMAIN-SUFFIX,arcor-ip.de
-DOMAIN-SUFFIX,epdg.epc.drz1.vodafone-ip.de
-DOMAIN-SUFFIX,epdg.epc.mnc002.mcc262.pub.3gppnetwork.org
-DOMAIN-SUFFIX,epdg.epc.mnc004.mcc262.pub.3gppnetwork.org
-DOMAIN-SUFFIX,epdg.epc.mnc009.mcc262.pub.3gppnetwork.org
-DOMAIN-SUFFIX,epdg.epc.mnc042.mcc262.pub.3gppnetwork.org
-DOMAIN-SUFFIX,epdg.epc.mnc043.mcc262.pub.3gppnetwork.org
-# IMS
-DOMAIN,ims.mnc002.mcc262.3gppnetwork.org
-# Vodafone DE IP
-IP-CIDR,139.7.96.0/19,no-resolve
-IP-CIDR,139.7.117.160/28,no-resolve
-IP-CIDR,194.25.0.60/32,no-resolve
-IP-CIDR,194.25.0.68/32,no-resolve
