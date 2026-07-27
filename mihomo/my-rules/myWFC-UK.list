@@ -4,11 +4,20 @@
 # =========================
 # UK - O2 / giffgaff
 # =========================
-# ePDG / Wi-Fi Calling
+# App / API / Website / Community
 DOMAIN-SUFFIX,giffgaff.com
+DOMAIN-SUFFIX,giffgaff.co.uk
+DOMAIN-SUFFIX,giffgaff.io
+DOMAIN-KEYWORD,giffgaff
+
+# ePDG / Wi-Fi Calling (O2 MNC=10, MCC=234)
 DOMAIN-SUFFIX,epdg.epc.mnc010.mcc234.pub.3gppnetwork.org
-# O2 / giffgaff IP
+DOMAIN-SUFFIX,ss.epdg.epc.mnc010.mcc234.pub.3gppnetwork.org
+DOMAIN-SUFFIX,ss.epdg.epc.geo.mnc010.mcc234.pub.3gppnetwork.org
+
+# O2 / giffgaff IP (AS35228)
 IP-CIDR,87.194.0.0/16,no-resolve
+IP-CIDR,82.132.128.0/17,no-resolve
 
 # =========================
 # UK - Vodafone / VOXI
