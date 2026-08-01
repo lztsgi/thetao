@@ -1,40 +1,36 @@
 # Wi-Fi Calling / VoWiFi / ePDG
 # mihomo rule-provider: behavior=classical, format=text
 
-# Apple 地区/蜂窝相关检测
-DOMAIN-SUFFIX,gspe1-ssl.ls.apple.com
+# =========================
+# HK - 3HK / CSL
+# =========================
 
-# 通用 ePDG / 3GPP
-DOMAIN-SUFFIX,3gppnetwork.org
-DOMAIN-KEYWORD,epdg
-
-# 3HK / CSL Wi-Fi Calling / ePDG
+# Wi-Fi Calling 开通/配置
 DOMAIN-SUFFIX,csl.prod.ondemandconnectivity.com
 DOMAIN-SUFFIX,device.three.com.hk
 DOMAIN-SUFFIX,hhk.prod.ondemandconnectivity.com
 DOMAIN-SUFFIX,wlan.three.com.hk
-DOMAIN-SUFFIX,epdg.epc.mnc000.mcc454.pub.3gppnetwork.org
-DOMAIN-SUFFIX,ss.epdg.epc.mnc000.mcc454.pub.3gppnetwork.org
-DOMAIN-SUFFIX,ss.epdg.epc.geo.mnc000.mcc454.pub.3gppnetwork.org
 
-# 3HK / CSL IP
+# ePDG
+DOMAIN-SUFFIX,mnc000.mcc454.pub.3gppnetwork.org
+
 IP-CIDR,4.209.41.0/24,no-resolve
 IP-CIDR,120.88.224.0/32,no-resolve
 IP-CIDR,120.88.240.0/32,no-resolve
 IP-CIDR,124.217.186.0/32,no-resolve
 IP-CIDR,203.145.92.0/32,no-resolve
 
-# Vodafone UK / giffgaff / VOXI Wi-Fi Calling / ePDG
-DOMAIN-SUFFIX,giffgaff.com
-DOMAIN-SUFFIX,voxi.co.uk
+# =========================
+# UK - Vodafone / VOXI
+# =========================
+
+# Wi-Fi Calling 开通/配置
 DOMAIN-SUFFIX,entsrv-uk.vodafone.com
 DOMAIN-SUFFIX,vuk-gto.prod.ondemandconnectivity.com
-DOMAIN-SUFFIX,epdg.epc.mnc010.mcc234.pub.3gppnetwork.org
-DOMAIN-SUFFIX,epdg.epc.mnc015.mcc234.pub.3gppnetwork.org
-DOMAIN-SUFFIX,ss.epdg.epc.mnc015.mcc234.pub.3gppnetwork.org
-DOMAIN-SUFFIX,ss.epdg.epc.geo.mnc015.mcc234.pub.3gppnetwork.org
 
-# Vodafone UK / giffgaff / VOXI IP
+# Vodafone UK 234-015 ePDG
+DOMAIN-SUFFIX,mnc015.mcc234.pub.3gppnetwork.org
+
 IP-CIDR,46.68.0.0/17,no-resolve
 IP-CIDR,62.141.11.0/24,no-resolve
 IP-CIDR,87.194.0.0/16,no-resolve
@@ -42,23 +38,23 @@ IP-CIDR,88.82.0.0/19,no-resolve
 IP-CIDR,148.252.160.0/19,no-resolve
 IP-CIDR,185.153.236.0/22,no-resolve
 
-# Vodafone DE Wi-Fi Calling / ePDG
-DOMAIN-SUFFIX,vodafone.de
-DOMAIN-SUFFIX,vodafone-ip.de
-DOMAIN-SUFFIX,vodafone-dns.net
-DOMAIN-SUFFIX,arcor-ip.de
-DOMAIN-SUFFIX,n26.com
-DOMAIN-SUFFIX,support.n26.com
-DOMAIN-SUFFIX,tech26.de
-DOMAIN-SUFFIX,epdg.epc.drz1.vodafone-ip.de
-DOMAIN-SUFFIX,epdg.epc.mnc002.mcc262.pub.3gppnetwork.org
-DOMAIN-SUFFIX,epdg.epc.mnc004.mcc262.pub.3gppnetwork.org
-DOMAIN-SUFFIX,epdg.epc.mnc009.mcc262.pub.3gppnetwork.org
-DOMAIN-SUFFIX,epdg.epc.mnc042.mcc262.pub.3gppnetwork.org
-DOMAIN-SUFFIX,epdg.epc.mnc043.mcc262.pub.3gppnetwork.org
+# =========================
+# DE - Vodafone
+# =========================
+
+# Vodafone 专用 ePDG
+DOMAIN,epdg.epc.drz1.vodafone-ip.de
+
+# 3GPP ePDG
+DOMAIN-SUFFIX,mnc002.mcc262.pub.3gppnetwork.org
+DOMAIN-SUFFIX,mnc004.mcc262.pub.3gppnetwork.org
+DOMAIN-SUFFIX,mnc009.mcc262.pub.3gppnetwork.org
+DOMAIN-SUFFIX,mnc042.mcc262.pub.3gppnetwork.org
+DOMAIN-SUFFIX,mnc043.mcc262.pub.3gppnetwork.org
+
+# IMS
 DOMAIN,ims.mnc002.mcc262.3gppnetwork.org
 
-# Vodafone DE IP
 IP-CIDR,139.7.96.0/19,no-resolve
 IP-CIDR,139.7.117.160/28,no-resolve
 IP-CIDR,194.25.0.60/32,no-resolve
@@ -68,17 +64,10 @@ IP-CIDR,194.25.0.68/32,no-resolve
 # US - Red Pocket GSMA / AT&T
 # =========================
 
-# AT&T 核心域名
-DOMAIN-SUFFIX,atl.net
-DOMAIN-SUFFIX,att.net
-DOMAIN-SUFFIX,att.com
-DOMAIN-SUFFIX,mobilecsf.att.com
-
-# AT&T IMS
-DOMAIN-SUFFIX,ims.mnc410.mcc310.3gppnetwork.org
+# AT&T 310-410 ePDG / IMS
 DOMAIN-SUFFIX,mnc410.mcc310.pub.3gppnetwork.org
+DOMAIN-SUFFIX,ims.mnc410.mcc310.3gppnetwork.org
 
-# AT&T ePDG 固定地址
 IP-CIDR,12.90.152.0/24,no-resolve
 IP-CIDR,12.91.152.0/24,no-resolve
 IP-CIDR,107.122.31.0/32,no-resolve
@@ -87,23 +76,15 @@ IP-CIDR,107.122.31.0/32,no-resolve
 # US - Ultra Mobile / T-Mobile
 # =========================
 
-# Ultra Mobile 当前卡使用 310-240
-# 匹配：
-# epdg.epc.mnc240.mcc310.pub.3gppnetwork.org
-# ss.epdg.epc.mnc240.mcc310.pub.3gppnetwork.org
-# epdg.epc.geo.mnc240.mcc310.pub.3gppnetwork.org
+# Ultra Mobile 310-240
 DOMAIN-SUFFIX,mnc240.mcc310.pub.3gppnetwork.org
-
-# T-Mobile 主网常用 310-260
-# 匹配普通、ss 和 geo ePDG 域名
-DOMAIN-SUFFIX,mnc260.mcc310.pub.3gppnetwork.org
-
-# IMS Realm：无 pub 的域名也一并覆盖
 DOMAIN-SUFFIX,ims.mnc240.mcc310.3gppnetwork.org
+
+# T-Mobile 310-260
+DOMAIN-SUFFIX,mnc260.mcc310.pub.3gppnetwork.org
 DOMAIN-SUFFIX,ims.mnc260.mcc310.3gppnetwork.org
 
-# T-Mobile Wi-Fi Calling 相关服务
-DOMAIN-SUFFIX,crl.t-mobile.com
+# ePDG 证书状态检查
+DOMAIN,crl.t-mobile.com
 
-# 仅作临时兜底，域名规则才是主要规则
 IP-CIDR,208.54.32.35/32,no-resolve
