@@ -3,46 +3,46 @@
 
 # =========================
 # US - Red Pocket GSMA / AT&T
+# MCC 310 / MNC 410
 # =========================
 
-# AT&T 核心域名
-DOMAIN-SUFFIX,atl.net
-DOMAIN-SUFFIX,att.net
-DOMAIN-SUFFIX,att.com
-DOMAIN-SUFFIX,mobilecsf.att.com
+# AT&T ePDG
+DOMAIN,epdg.epc.att.net
+DOMAIN,epdg.epc.att-idns.net
+DOMAIN,epdg.epc.mnc410.mcc310.pub.3gppnetwork.org
 
-# AT&T IMS
-DOMAIN-SUFFIX,ims.mnc410.mcc310.3gppnetwork.org
-DOMAIN-SUFFIX,mnc410.mcc310.pub.3gppnetwork.org
+# AT&T WFC entitlement
+DOMAIN,sentitlement2.mobile.att.net
 
-# AT&T ePDG 固定地址
+# AT&T Visual Voicemail
+# 非 ePDG，但 AT&T 官方列入 WFC 防火墙放行清单
+DOMAIN,vvm.mobile.att.net
+
+# AT&T 当前 ePDG
+IP-CIDR,107.122.31.0/24,no-resolve
+
+# AT&T / Red Pocket 旧版或区域 ePDG 备用段
 IP-CIDR,12.90.152.0/24,no-resolve
 IP-CIDR,12.91.152.0/24,no-resolve
-IP-CIDR,107.122.31.0/32,no-resolve
 
 
 # =========================
 # US - Ultra Mobile / T-Mobile
+# Ultra 新卡常见 MNC 240
+# T-Mobile 主网 MNC 260
 # =========================
 
-# Ultra Mobile 当前卡使用 310-240
-# 匹配：
-# epdg.epc.mnc240.mcc310.pub.3gppnetwork.org
-# ss.epdg.epc.mnc240.mcc310.pub.3gppnetwork.org
-# epdg.epc.geo.mnc240.mcc310.pub.3gppnetwork.org
+# Ultra Mobile 310-240
+# 同时覆盖 epdg、ss 和 geo 形式
 DOMAIN-SUFFIX,mnc240.mcc310.pub.3gppnetwork.org
 
-# T-Mobile 主网常用 310-260
-# 匹配普通、ss 和 geo ePDG 域名
+# T-Mobile 310-260
+# Ultra 240 ePDG 当前也会 CNAME 到 260 的 geo ePDG
 DOMAIN-SUFFIX,mnc260.mcc310.pub.3gppnetwork.org
 
-# IMS Realm：无 pub 的域名也一并覆盖
-DOMAIN-SUFFIX,ims.mnc240.mcc310.3gppnetwork.org
-DOMAIN-SUFFIX,ims.mnc260.mcc310.3gppnetwork.org
+# T-Mobile WFC 证书吊销检查
+DOMAIN,crl.t-mobile.com
 
-# T-Mobile Wi-Fi Calling 相关服务
-DOMAIN-SUFFIX,crl.t-mobile.com
-
-# 你本次抓包观察到的 Ultra/T-Mobile ePDG IP
-# 仅作临时兜底，域名规则才是主要规则
-IP-CIDR,208.54.32.35/32,no-resolve
+# T-Mobile 官方 WFC 2.0 地址段
+# ePDG 会根据地区在整个 /16 中变化
+IP-CIDR,208.54.0.0/16,no-resolve
