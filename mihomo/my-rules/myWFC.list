@@ -1,90 +1,108 @@
 # Wi-Fi Calling / VoWiFi / ePDG
 # mihomo rule-provider: behavior=classical, format=text
 
+
 # =========================
-# HK - 3HK / CSL
+# HK - CSL / HKT
 # =========================
 
-# Wi-Fi Calling 开通/配置
-DOMAIN-SUFFIX,csl.prod.ondemandconnectivity.com
-DOMAIN-SUFFIX,device.three.com.hk
-DOMAIN-SUFFIX,hhk.prod.ondemandconnectivity.com
-DOMAIN-SUFFIX,wlan.three.com.hk
-
-# ePDG
+# 当前有效的 HKT/CSL ePDG MNC
 DOMAIN-SUFFIX,mnc000.mcc454.pub.3gppnetwork.org
+DOMAIN-SUFFIX,mnc010.mcc454.pub.3gppnetwork.org
+DOMAIN-SUFFIX,mnc019.mcc454.pub.3gppnetwork.org
 
-IP-CIDR,4.209.41.0/24,no-resolve
-IP-CIDR,120.88.224.0/32,no-resolve
-IP-CIDR,120.88.240.0/32,no-resolve
-IP-CIDR,124.217.186.0/32,no-resolve
-IP-CIDR,203.145.92.0/32,no-resolve
+# CSL/HKT ePDG
+IP-CIDR,120.88.224.0/24,no-resolve
+IP-CIDR,120.88.240.0/24,no-resolve
+
+
+# =========================
+# HK - 3HK / Hutchison
+# =========================
+
+# WFC entitlement / device provisioning
+DOMAIN,device.three.com.hk
+
+# 3HK ePDG
+DOMAIN,wlan.three.com.hk
+
+# 3HK ePDG 当前及备用网段
+IP-CIDR,124.217.186.0/24,no-resolve
+IP-CIDR,203.145.92.0/24,no-resolve
+
 
 # =========================
 # UK - Vodafone / VOXI
+# MCC 234 / MNC 15
 # =========================
 
-# Wi-Fi Calling 开通/配置
-DOMAIN-SUFFIX,entsrv-uk.vodafone.com
-DOMAIN-SUFFIX,vuk-gto.prod.ondemandconnectivity.com
+# WFC entitlement
+DOMAIN,entsrv-uk.vodafone.com
 
-# Vodafone UK 234-015 ePDG
+# Vodafone UK ePDG
 DOMAIN-SUFFIX,mnc015.mcc234.pub.3gppnetwork.org
 
-IP-CIDR,46.68.0.0/17,no-resolve
-IP-CIDR,62.141.11.0/24,no-resolve
-IP-CIDR,87.194.0.0/16,no-resolve
+# Vodafone UK ePDG 网段
 IP-CIDR,88.82.0.0/19,no-resolve
 IP-CIDR,148.252.160.0/19,no-resolve
-IP-CIDR,185.153.236.0/22,no-resolve
+
+
+# =========================
+# UK - CTExcel / EE
+# MCC 234 / MNC 33
+# =========================
+
+# CTExcel ePDG
+DOMAIN-SUFFIX,mnc033.mcc234.pub.3gppnetwork.org
+
+# CTExcel / EE ePDG
+IP-CIDR,31.94.76.0/24,no-resolve
+
 
 # =========================
 # DE - Vodafone
+# MCC 262 / MNC 02
 # =========================
 
-# Vodafone 专用 ePDG
+# Vodafone DE ePDG
 DOMAIN,epdg.epc.drz1.vodafone-ip.de
-
-# 3GPP ePDG
 DOMAIN-SUFFIX,mnc002.mcc262.pub.3gppnetwork.org
-DOMAIN-SUFFIX,mnc004.mcc262.pub.3gppnetwork.org
-DOMAIN-SUFFIX,mnc009.mcc262.pub.3gppnetwork.org
-DOMAIN-SUFFIX,mnc042.mcc262.pub.3gppnetwork.org
-DOMAIN-SUFFIX,mnc043.mcc262.pub.3gppnetwork.org
 
-# IMS
-DOMAIN,ims.mnc002.mcc262.3gppnetwork.org
-
-IP-CIDR,139.7.96.0/19,no-resolve
+# Vodafone DE ePDG
 IP-CIDR,139.7.117.160/28,no-resolve
-IP-CIDR,194.25.0.60/32,no-resolve
-IP-CIDR,194.25.0.68/32,no-resolve
+
 
 # =========================
 # US - Red Pocket GSMA / AT&T
+# MCC 310 / MNC 410
 # =========================
 
-# AT&T 310-410 ePDG / IMS
+# AT&T ePDG
+DOMAIN,epdg.epc.att.net
+DOMAIN,epdg.epc.att-idns.net
 DOMAIN-SUFFIX,mnc410.mcc310.pub.3gppnetwork.org
-DOMAIN-SUFFIX,ims.mnc410.mcc310.3gppnetwork.org
 
-IP-CIDR,12.90.152.0/24,no-resolve
-IP-CIDR,12.91.152.0/24,no-resolve
-IP-CIDR,107.122.31.0/32,no-resolve
+# AT&T WFC entitlement
+DOMAIN,sentitlement2.mobile.att.net
+
+# AT&T 当前 ePDG 网段
+IP-CIDR,107.122.31.0/24,no-resolve
+
 
 # =========================
 # US - Ultra Mobile / T-Mobile
+# Ultra MNC 240 / T-Mobile MNC 260
 # =========================
 
-# Ultra Mobile 310-240
+# Ultra Mobile ePDG
 DOMAIN-SUFFIX,mnc240.mcc310.pub.3gppnetwork.org
-DOMAIN-SUFFIX,ims.mnc240.mcc310.3gppnetwork.org
 
-# T-Mobile 310-260
+# T-Mobile ePDG
+# Ultra 240 目前也会跳转到 260 的 geo ePDG
 DOMAIN-SUFFIX,mnc260.mcc310.pub.3gppnetwork.org
-DOMAIN-SUFFIX,ims.mnc260.mcc310.3gppnetwork.org
 
-# ePDG 证书状态检查
+# WFC 证书状态检查
 DOMAIN,crl.t-mobile.com
 
-IP-CIDR,208.54.32.35/32,no-resolve
+# T-Mobile 官方 WFC 2.0 地址段
+IP-CIDR,208.54.0.0/16,no-resolve
