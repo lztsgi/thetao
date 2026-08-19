@@ -3,8 +3,7 @@
   "rules": [
     {
       "domain_suffix": [
-        "wise.com",
-        "ctexcel.com"
+        "wise.com"
       ]
     }
   ]
