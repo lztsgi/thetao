@@ -1,7 +1,43 @@
-+.taome.xyz
-+.lztsgi.com.cn
-+.h.taome.xyz
-+.ys.taome.xyz
-+.rf.taome.xyz
-+.y.taome.xyz
-+.a.larrychan.cn
+DOMAIN-SUFFIX,taome.xyz
+DOMAIN-SUFFIX,lztsgi.com.cn
+DOMAIN-SUFFIX,a.larrychan.cn
+
+# =========================
+# Germany - O2 / Telefónica DE
+# MCC 262
+# MNC 03：Telefónica / 原 E-Plus
+# MNC 07：O2 老 IMSI/部分 O2 SIM
+# =========================
+# 标准生产 ePDG
+DOMAIN,epdg.epc.mnc003.mcc262.pub.3gppnetwork.org
+DOMAIN,epdg.epc.mnc007.mcc262.pub.3gppnetwork.org
+# 覆盖运营商今后增加的 sos/ss/geo ePDG
+DOMAIN-SUFFIX,mnc003.mcc262.pub.3gppnetwork.org
+DOMAIN-SUFFIX,mnc007.mcc262.pub.3gppnetwork.org
+# O2-DE 当前 ePDG IPv4
+# 2026-08-22 公共 DNS 实时解析
+IP-CIDR,213.20.31.8/32,no-resolve
+IP-CIDR,213.20.151.16/32,no-resolve
+IP-CIDR,213.20.175.56/32,no-resolve
+IP-CIDR,62.52.52.30/32,no-resolve
+
+# =========================
+# Germany - Vodafone DE
+# MCC 262 / MNC 02
+# 普通 Vodafone DE 用户的生产 WFC
+# =========================
+DOMAIN,epdg.epc.mnc002.mcc262.pub.3gppnetwork.org
+DOMAIN,epdg.epc.drz1.vodafone-ip.de
+# Vodafone DE ePDG
+IP-CIDR,139.7.117.160/28,no-resolve
+
+# =========================
+# Vodafone UK / VOXI
+# =========================
+DOMAIN,epdg.epc.mnc015.mcc234.pub.3gppnetwork.org
+DOMAIN,ss.epdg.epc.mnc015.mcc234.pub.3gppnetwork.org
+DOMAIN,ss.epdg.epc.geo.mnc015.mcc234.pub.3gppnetwork.org
+DOMAIN,entsrv-uk.vodafone.com
+# Vodafone ePDG 当前及备用地址段
+IP-CIDR,88.82.0.0/19,no-resolve
+IP-CIDR,148.252.160.0/19,no-resolve
