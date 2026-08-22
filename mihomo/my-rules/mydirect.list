@@ -5,20 +5,3 @@
 +.rf.taome.xyz
 +.y.taome.xyz
 +.a.larrychan.cn
-
-# =========================
-# O2-DE
-# MCC 262 / MNC 02
-# 普通 Vodafone DE 用户的生产 WFC
-# =========================
-+.mnc003.mcc262.pub.3gppnetwork.org
-
-# =========================
-# Germany - Vodafone DE
-# MCC 262 / MNC 02
-# 普通 Vodafone DE 用户的生产 WFC
-# =========================
-DOMAIN,epdg.epc.mnc002.mcc262.pub.3gppnetwork.org
-DOMAIN,epdg.epc.drz1.vodafone-ip.de
-# Vodafone DE ePDG
-IP-CIDR,139.7.117.160/28,no-resolve
