@@ -1,3 +1,9 @@
+# TG-Twilight/AWAvenue-Ads-Rule
 https://raw.githubusercontent.com/TG-Twilight/AWAvenue-Ads-Rule/main/Filters/AWAvenue-Ads-Rule-Clash-Classical.yaml@adblock
+
+# juewuy/ShellCrash
+# fakeip-filter 会由工作流移除 3gppnetwork.org，并把 *.lan 改为 +.lan。
 https://raw.githubusercontent.com/juewuy/ShellCrash/dev/public/fake_ip_filter.list@fakeip-filter
+
+# DustinWin/ruleset_geodata
 https://github.com/DustinWin/ruleset_geodata/releases/tag/mihomo-ruleset#release-assets@rule-set/other
