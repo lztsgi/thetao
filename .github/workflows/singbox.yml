@@ -262,7 +262,9 @@ jobs:
           # 5) singbox.txt 来源清单与特殊链接解析
           #
           # 普通转换源：URL 或 URL@名称
-          # 远程规则集：RULE-SET|仓库|标签|JSON_URL|SRS_URL
+          # 仓库规则集：REPOSITORY|仓库|标签列表|JSON模板|SRS模板
+          # 标签别名：输出标签=上游文件名，例如 geosite_adguard=adblocksingbox
+          # 单条兼容：RULE-SET|仓库|标签|JSON_URL|SRS_URL
           # 全局选项：OPTION|max_repository_inactive_days|90
           # =========================================================
           def parse_source_list(lines):
@@ -293,6 +295,42 @@ jobs:
                           max_repository_inactive_days = int(option_value)
                       else:
                           raise ValueError(f"singbox.txt 中存在未知选项: {option_name}")
+                      continue
+
+                  if line.startswith("REPOSITORY|"):
+                      parts = line.split("|", 4)
+                      if len(parts) != 5:
+                          raise ValueError(f"singbox.txt 第 {line_number} 行 REPOSITORY 格式错误")
+
+                      _, repository, rule_spec_text, json_template, srs_template = parts
+                      repository = repository.strip()
+                      json_template = json_template.strip()
+                      srs_template = srs_template.strip()
+                      rule_specs = [item.strip() for item in rule_spec_text.split(",") if item.strip()]
+
+                      if not rule_specs:
+                          raise ValueError(f"singbox.txt 第 {line_number} 行没有配置规则标签")
+                      if not json_template and not srs_template:
+                          raise ValueError(f"singbox.txt 第 {line_number} 行没有配置 JSON/SRS 模板")
+
+                      for rule_spec in rule_specs:
+                          if "=" in rule_spec:
+                              tag, source_name = [part.strip() for part in rule_spec.split("=", 1)]
+                          else:
+                              tag = rule_spec
+                              source_name = rule_spec
+
+                          if not tag or not source_name:
+                              raise ValueError(
+                                  f"singbox.txt 第 {line_number} 行存在无效规则标签: {rule_spec!r}"
+                              )
+
+                          configured_rule_sets.append({
+                              "repository": repository,
+                              "tag": tag,
+                              "json_url": json_template.replace("{name}", source_name).replace("{tag}", tag),
+                              "srs_url": srs_template.replace("{name}", source_name).replace("{tag}", tag)
+                          })
                       continue
 
                   if line.startswith("RULE-SET|"):
