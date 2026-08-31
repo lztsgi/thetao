@@ -1,20 +1,2 @@
-# 仓库活跃度阈值（按仓库 pushed_at 判断）
-OPTION|max_repository_inactive_days|90
-
-# TG-Twilight/AWAvenue-Ads-Rule
 https://raw.githubusercontent.com/TG-Twilight/AWAvenue-Ads-Rule/main/Filters/AWAvenue-Ads-Rule-Clash-Classical.yaml@adblock
-
-# DustinWin/ruleset_geodata
-REPOSITORY|DustinWin/ruleset_geodata|cn,cnip,private,ads,proxy,ai,games,microsoft-cn,apple-cn,games-cn,networktest,netflix,disney,youtube,spotify,primevideo|https://raw.githubusercontent.com/DustinWin/ruleset_geodata/sing-box-ruleset/{name}.json|https://raw.githubusercontent.com/DustinWin/ruleset_geodata/sing-box-ruleset/{name}.srs
-
-# senshinya/singbox_ruleset
-REPOSITORY|senshinya/singbox_ruleset|Google,Android,GoogleFCM,BlockHttpDNS,AdGuardSDNSFilter|https://raw.githubusercontent.com/senshinya/singbox_ruleset/main/rule/{name}/{name}.json|https://raw.githubusercontent.com/senshinya/singbox_ruleset/main/rule/{name}/{name}.srs
-
-# MetaCubeX/meta-rules-dat
-REPOSITORY|MetaCubeX/meta-rules-dat|gfw,telegram|https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/{name}.json|https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/{name}.srs
-
-# 217heidai/adblockfilters
-REPOSITORY|217heidai/adblockfilters|geosite_adguard=adblocksingbox|https://raw.githubusercontent.com/217heidai/adblockfilters/main/rules/{name}.json|https://raw.githubusercontent.com/217heidai/adblockfilters/main/rules/{name}.srs
-
-# SagerNet/sing-geosite（上游仅提供 SRS，工作流会反编译出可读 JSON）
-REPOSITORY|SagerNet/sing-geosite|geosite-category-ads-all||https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/{name}.srs
+https://github.com/DustinWin/ruleset_geodata/releases/tag/sing-box-ruleset#release-assets@rule-set/other

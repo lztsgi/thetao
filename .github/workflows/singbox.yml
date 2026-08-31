@@ -43,8 +43,6 @@ jobs:
 
       - name: Run Python script
         working-directory: ./singbox
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           python3 << 'EOF'
           import pandas as pd
@@ -52,12 +50,9 @@ jobs:
           import concurrent.futures
           import os
           import json
-          import shutil
-          import subprocess
           import requests
           import yaml
           import ipaddress
-          from datetime import datetime, timezone
           from io import StringIO
           from urllib.parse import urldefrag
 
@@ -227,132 +222,13 @@ jobs:
           # =========================================================
           # 4) sing-box 编译
           # =========================================================
-          def compile_json_to_srs(json_path, srs_path=None):
-              if srs_path is None:
-                  srs_path = os.path.splitext(json_path)[0] + ".srs"
-
-              result = subprocess.run(
-                  [
-                      "sing-box",
-                      "rule-set",
-                      "compile",
-                      "--output",
-                      srs_path,
-                      json_path
-                  ],
-                  check=False
-              )
-              return result.returncode == 0, srs_path
-
-          def decompile_srs_to_json(srs_path, json_path):
-              result = subprocess.run(
-                  [
-                      "sing-box",
-                      "rule-set",
-                      "decompile",
-                      "--output",
-                      json_path,
-                      srs_path
-                  ],
-                  check=False
-              )
-              return result.returncode == 0
+          def compile_json_to_srs(json_path):
+              srs_path = os.path.splitext(json_path)[0] + ".srs"
+              rc = os.system(f'sing-box rule-set compile --output "{srs_path}" "{json_path}"')
+              return rc == 0, srs_path
 
           # =========================================================
-          # 5) singbox.txt 来源清单与特殊链接解析
-          #
-          # 普通转换源：URL 或 URL@名称
-          # 仓库规则集：REPOSITORY|仓库|标签列表|JSON模板|SRS模板
-          # 标签别名：输出标签=上游文件名，例如 geosite_adguard=adblocksingbox
-          # 单条兼容：RULE-SET|仓库|标签|JSON_URL|SRS_URL
-          # 全局选项：OPTION|max_repository_inactive_days|90
-          # =========================================================
-          def parse_source_list(lines):
-              normal_links = []
-              configured_rule_sets = []
-              max_repository_inactive_days = 90
-              seen_options = set()
-
-              for line_number, raw_line in enumerate(lines, start=1):
-                  line = raw_line.strip()
-                  if not line or line.startswith("#"):
-                      continue
-
-                  if line.startswith("OPTION|"):
-                      parts = line.split("|", 2)
-                      if len(parts) != 3:
-                          raise ValueError(f"singbox.txt 第 {line_number} 行 OPTION 格式错误")
-
-                      _, option_name, option_value = parts
-                      option_name = option_name.strip()
-                      option_value = option_value.strip()
-
-                      if option_name in seen_options:
-                          raise ValueError(f"singbox.txt 中存在重复选项: {option_name}")
-                      seen_options.add(option_name)
-
-                      if option_name == "max_repository_inactive_days":
-                          max_repository_inactive_days = int(option_value)
-                      else:
-                          raise ValueError(f"singbox.txt 中存在未知选项: {option_name}")
-                      continue
-
-                  if line.startswith("REPOSITORY|"):
-                      parts = line.split("|", 4)
-                      if len(parts) != 5:
-                          raise ValueError(f"singbox.txt 第 {line_number} 行 REPOSITORY 格式错误")
-
-                      _, repository, rule_spec_text, json_template, srs_template = parts
-                      repository = repository.strip()
-                      json_template = json_template.strip()
-                      srs_template = srs_template.strip()
-                      rule_specs = [item.strip() for item in rule_spec_text.split(",") if item.strip()]
-
-                      if not rule_specs:
-                          raise ValueError(f"singbox.txt 第 {line_number} 行没有配置规则标签")
-                      if not json_template and not srs_template:
-                          raise ValueError(f"singbox.txt 第 {line_number} 行没有配置 JSON/SRS 模板")
-
-                      for rule_spec in rule_specs:
-                          if "=" in rule_spec:
-                              tag, source_name = [part.strip() for part in rule_spec.split("=", 1)]
-                          else:
-                              tag = rule_spec
-                              source_name = rule_spec
-
-                          if not tag or not source_name:
-                              raise ValueError(
-                                  f"singbox.txt 第 {line_number} 行存在无效规则标签: {rule_spec!r}"
-                              )
-
-                          configured_rule_sets.append({
-                              "repository": repository,
-                              "tag": tag,
-                              "json_url": json_template.replace("{name}", source_name).replace("{tag}", tag),
-                              "srs_url": srs_template.replace("{name}", source_name).replace("{tag}", tag)
-                          })
-                      continue
-
-                  if line.startswith("RULE-SET|"):
-                      parts = line.split("|", 4)
-                      if len(parts) != 5:
-                          raise ValueError(f"singbox.txt 第 {line_number} 行 RULE-SET 格式错误")
-
-                      _, repository, tag, json_url, srs_url = parts
-                      configured_rule_sets.append({
-                          "repository": repository.strip(),
-                          "tag": tag.strip(),
-                          "json_url": json_url.strip(),
-                          "srs_url": srs_url.strip()
-                      })
-                      continue
-
-                  normal_links.append(line)
-
-              return normal_links, configured_rule_sets, max_repository_inactive_days
-
-          # =========================================================
-          # 6) 特殊链接解析
+          # 5) 特殊链接解析
           #    支持：
           #    #release-assets@other-rule
           #    #release-assets@rule-set/other
@@ -392,7 +268,7 @@ jobs:
               return os.path.normpath(f"./{p}")
 
           # =========================================================
-          # 7) 下载 GitHub Release Assets
+          # 6) 下载 GitHub Release Assets
           # =========================================================
           def download_github_release_assets(tag_url, output_directory):
               headers = {
@@ -437,165 +313,7 @@ jobs:
                   print(f"已下载 release asset: {os.path.relpath(save_path, '.')}")
 
           # =========================================================
-          # 8) 下载配置中使用的远程 JSON/SRS 规则集
-          # =========================================================
-          def download_to_temporary_file(url, destination):
-              headers = {'User-Agent': 'Mozilla/5.0'}
-              temporary_path = f"{destination}.download"
-
-              try:
-                  response = requests.get(url, headers=headers, stream=True, timeout=120)
-                  response.raise_for_status()
-
-                  with open(temporary_path, "wb") as output_file:
-                      for chunk in response.iter_content(chunk_size=8192):
-                          if chunk:
-                              output_file.write(chunk)
-
-                  return temporary_path
-              except Exception:
-                  if os.path.exists(temporary_path):
-                      os.remove(temporary_path)
-                  raise
-
-          def validate_rule_set_json(json_path):
-              with open(json_path, 'r', encoding='utf-8') as input_file:
-                  rule_set = json.load(input_file)
-
-              if not isinstance(rule_set, dict):
-                  raise ValueError("规则集 JSON 顶层必须是对象")
-              if not isinstance(rule_set.get("version"), int):
-                  raise ValueError("规则集 JSON 缺少整数 version")
-              if not isinstance(rule_set.get("rules"), list):
-                  raise ValueError("规则集 JSON 缺少 rules 数组")
-
-          def validate_source_repository_activity(entries, max_inactive_days):
-              if not isinstance(max_inactive_days, int) or max_inactive_days < 1:
-                  raise ValueError("max_repository_inactive_days 必须是正整数")
-
-              repositories = sorted({
-                  (entry.get("repository") or "").strip()
-                  for entry in entries
-              })
-              headers = {
-                  'User-Agent': 'rules-singbox-workflow',
-                  'Accept': 'application/vnd.github+json'
-              }
-              github_token = os.environ.get("GITHUB_TOKEN")
-              if github_token:
-                  headers['Authorization'] = f"Bearer {github_token}"
-
-              current_time = datetime.now(timezone.utc)
-              for repository in repositories:
-                  if not re.fullmatch(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+', repository):
-                      raise ValueError(f"无效的上游仓库: {repository!r}")
-
-                  response = requests.get(
-                      f"https://api.github.com/repos/{repository}",
-                      headers=headers,
-                      timeout=60
-                  )
-                  response.raise_for_status()
-                  repository_data = response.json()
-
-                  if repository_data.get("archived"):
-                      raise RuntimeError(f"上游仓库已归档: {repository}")
-                  if repository_data.get("disabled"):
-                      raise RuntimeError(f"上游仓库已禁用: {repository}")
-
-                  pushed_at = repository_data.get("pushed_at")
-                  if not pushed_at:
-                      raise RuntimeError(f"无法获取上游仓库维护时间: {repository}")
-
-                  pushed_time = datetime.fromisoformat(pushed_at.replace("Z", "+00:00"))
-                  inactive_days = (current_time - pushed_time).days
-                  if inactive_days > max_inactive_days:
-                      raise RuntimeError(
-                          f"上游仓库已超过 {max_inactive_days} 天未更新: "
-                          f"{repository} (pushed_at={pushed_at})"
-                      )
-
-                  print(
-                      f"上游仓库活跃: {repository}, "
-                      f"pushed_at={pushed_at}, inactive_days={inactive_days}"
-                  )
-
-          def download_configured_rule_sets(entries, max_inactive_days, output_directory):
-              if not entries:
-                  raise ValueError("singbox.txt 中没有配置远程 JSON/SRS 规则集")
-
-              validate_source_repository_activity(entries, max_inactive_days)
-
-              staging_directory = f"{output_directory}.staging"
-              if os.path.exists(staging_directory):
-                  shutil.rmtree(staging_directory)
-              os.makedirs(staging_directory, exist_ok=True)
-
-              seen_tags = set()
-
-              try:
-                  for entry in entries:
-                      tag = (entry.get("tag") or "").strip()
-                      repository = (entry.get("repository") or "").strip()
-                      json_url = (entry.get("json_url") or "").strip()
-                      srs_url = (entry.get("srs_url") or "").strip()
-
-                      if not re.fullmatch(r'[A-Za-z0-9._-]+', tag):
-                          raise ValueError(f"无效的规则标签: {tag!r}")
-                      if not re.fullmatch(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+', repository):
-                          raise ValueError(f"规则 {tag} 的 repository 无效: {repository!r}")
-                      if tag in seen_tags:
-                          raise ValueError(f"重复的规则标签: {tag}")
-                      if not json_url and not srs_url:
-                          raise ValueError(f"规则 {tag} 未配置 json_url 或 srs_url")
-                      repository_prefix = f"https://raw.githubusercontent.com/{repository}/"
-                      for source_url in [json_url, srs_url]:
-                          if source_url and not source_url.startswith(repository_prefix):
-                              raise ValueError(f"规则 {tag} 的源站与 repository 不一致: {source_url}")
-                      seen_tags.add(tag)
-
-                      json_path = os.path.join(staging_directory, f"{tag}.json")
-                      srs_path = os.path.join(staging_directory, f"{tag}.srs")
-                      json_temporary_path = None
-                      srs_temporary_path = None
-
-                      try:
-                          if json_url:
-                              json_temporary_path = download_to_temporary_file(json_url, json_path)
-                              validate_rule_set_json(json_temporary_path)
-
-                          if srs_url:
-                              srs_temporary_path = download_to_temporary_file(srs_url, srs_path)
-
-                          if json_temporary_path is None:
-                              json_temporary_path = f"{json_path}.download"
-                              if not decompile_srs_to_json(srs_temporary_path, json_temporary_path):
-                                  raise RuntimeError(f"SRS 反编译失败: {tag}")
-                              validate_rule_set_json(json_temporary_path)
-
-                          if srs_temporary_path is None:
-                              srs_temporary_path = f"{srs_path}.download"
-                              ok, _ = compile_json_to_srs(json_temporary_path, srs_temporary_path)
-                              if not ok:
-                                  raise RuntimeError(f"JSON 编译失败: {tag}")
-
-                          os.replace(json_temporary_path, json_path)
-                          os.replace(srs_temporary_path, srs_path)
-                          print(f"已更新远程规则集: {tag} <- {repository}")
-                      finally:
-                          for temporary_path in [json_temporary_path, srs_temporary_path]:
-                              if temporary_path and os.path.exists(temporary_path):
-                                  os.remove(temporary_path)
-
-                  if os.path.exists(output_directory):
-                      shutil.rmtree(output_directory)
-                  os.replace(staging_directory, output_directory)
-              finally:
-                  if os.path.exists(staging_directory):
-                      shutil.rmtree(staging_directory)
-
-          # =========================================================
-          # 9) 原有规则转换逻辑
+          # 7) 原有规则转换逻辑
           # =========================================================
           def parse_list_file(link, geo_output_directory, geosite_output_directory):
               try:
@@ -671,7 +389,7 @@ jobs:
                   return None
 
           # =========================================================
-          # 10) 编译本地手动 json
+          # 8) 编译本地手动 json
           # =========================================================
           def compile_manual_local_jsons(geo_output_dir, geosite_output_dir):
               local_jsons = []
@@ -695,22 +413,20 @@ jobs:
                       print(f"本地手动 json 编译失败: {rel_json}")
 
           # =========================================================
-          # 11) 主流程
+          # 9) 主流程
           # =========================================================
           with open("singbox.txt", 'r', encoding='utf-8') as links_file:
-              source_lines = links_file.read().splitlines()
+              links = links_file.read().splitlines()
 
-          links, configured_rule_sets, max_repository_inactive_days = parse_source_list(source_lines)
+          links = [l for l in links if l.strip() and not l.strip().startswith("#")]
 
           geo_output_dir = "./rule-set/geo"
           geosite_output_dir = "./rule-set/geosite"
           default_other_rule_output_dir = "./rule-set/other-rule"
-          configured_other_output_dir = "./rule-set/other"
 
           os.makedirs(geo_output_dir, exist_ok=True)
           os.makedirs(geosite_output_dir, exist_ok=True)
           os.makedirs(default_other_rule_output_dir, exist_ok=True)
-          os.makedirs(configured_other_output_dir, exist_ok=True)
 
           for raw_link in links:
               link, mode, output_subdir = parse_special_link(raw_link)
@@ -736,12 +452,6 @@ jobs:
                   geo_output_directory=geo_output_dir,
                   geosite_output_directory=geosite_output_dir
               )
-
-          download_configured_rule_sets(
-              configured_rule_sets,
-              max_repository_inactive_days,
-              configured_other_output_dir
-          )
 
           compile_manual_local_jsons(geo_output_dir, geosite_output_dir)
           EOF

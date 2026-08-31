@@ -145,44 +145,6 @@ jobs:
             fi
           }
 
-          clean_shellcrash_fakeip_filter() {
-            local raw_file="$1"
-            local filtered_file="${raw_file}.filtered"
-            local removed_3gpp
-            local replaced_lan
-
-            removed_3gpp="$(grep -Eic '3gppnetwork\.org' "$raw_file" || true)"
-            replaced_lan="$(grep -Eic '^[[:space:]]*\*\.lan[[:space:]]*$' "$raw_file" || true)"
-
-            awk '
-              index(tolower($0), "3gppnetwork.org") > 0 { next }
-              /^[[:space:]]*\*\.[Ll][Aa][Nn][[:space:]]*$/ {
-                print "+.lan"
-                next
-              }
-              { print }
-            ' "$raw_file" > "$filtered_file"
-
-            mv "$filtered_file" "$raw_file"
-
-            if grep -Eqi '3gppnetwork\.org' "$raw_file"; then
-              echo "Error: fakeip-filter still contains 3gppnetwork rules"
-              return 1
-            fi
-
-            if ! grep -Fqx '+.lan' "$raw_file"; then
-              echo "Error: fakeip-filter does not contain the required +.lan rule"
-              return 1
-            fi
-
-            if grep -Fqx '*.lan' "$raw_file"; then
-              echo "Error: fakeip-filter still contains the narrow *.lan rule"
-              return 1
-            fi
-
-            echo "ShellCrash fakeip-filter cleaned: removed ${removed_3gpp} 3gppnetwork rule(s), replaced ${replaced_lan} *.lan rule(s)"
-          }
-
           ######################################################################
           # 模块 4：普通链接下载并按原逻辑转换
           ######################################################################
@@ -191,12 +153,11 @@ jobs:
             local url="$1"
             local tail="$2"
             local kind="$3"
-            local transform="none"
 
             local filename=""
             local raw_file=""
             local behavior=""
-            local dest_list=""
+            local dest_txt=""
             local dest_mrs=""
 
             if [[ "$kind" == "filename" ]]; then
@@ -206,11 +167,7 @@ jobs:
               filename="$(sanitize_name "$filename")"
             fi
 
-            if [[ "$filename" == "fakeip-filter" ]]; then
-              transform="shellcrash_fakeip_filter"
-            fi
-
-            raw_file="$CACHE_DIR/${filename}.download"
+            raw_file="$CACHE_DIR/${filename}.txt"
 
             echo "Processing normal url: $url -> $filename"
 
@@ -226,41 +183,25 @@ jobs:
               return 0
             fi
 
-            if [[ "$transform" == "shellcrash_fakeip_filter" ]]; then
-              clean_shellcrash_fakeip_filter "$raw_file"
-            fi
-
             behavior="$(detect_behavior "$raw_file")"
 
             if [[ "$behavior" == "ipcidr" ]]; then
-              dest_list="$TMP_GEOIP/${filename}.list"
+              dest_txt="$TMP_GEOIP/${filename}.txt"
               dest_mrs="$TMP_GEOIP/${filename}.mrs"
             else
-              dest_list="$TMP_GEOSITE/${filename}.list"
+              dest_txt="$TMP_GEOSITE/${filename}.txt"
               dest_mrs="$TMP_GEOSITE/${filename}.mrs"
             fi
 
-            cp "$raw_file" "$dest_list"
+            cp "$raw_file" "$dest_txt"
 
-            if ./mihomo-bin convert-ruleset "$behavior" text "$dest_list" "$dest_mrs"; then
+            if ./mihomo-bin convert-ruleset "$behavior" text "$dest_txt" "$dest_mrs"; then
               local mrs_size
               mrs_size="$(stat -c%s "$dest_mrs" 2>/dev/null || echo "0")"
               echo "Success: $filename ($behavior) -> ${mrs_size} bytes"
             else
-              if [[ "$transform" == "shellcrash_fakeip_filter" ]]; then
-                echo "Error: fakeip-filter must have a valid MRS file"
-                rm -f "$dest_mrs" "$raw_file"
-                return 1
-              fi
-
-              echo "Warning: convert-ruleset failed for $filename ($behavior), keep raw list only"
+              echo "Warning: convert-ruleset failed for $filename ($behavior), keep raw txt only"
               rm -f "$dest_mrs"
-            fi
-
-            if [[ "$transform" == "shellcrash_fakeip_filter" && ! -s "$dest_mrs" ]]; then
-              echo "Error: fakeip-filter MRS file is missing or empty"
-              rm -f "$raw_file"
-              return 1
             fi
 
             rm -f "$raw_file"
@@ -317,7 +258,7 @@ jobs:
             ensure_dir "$final_dir"
 
             json_file="$CACHE_DIR/release_api_$(date +%s%N).json"
-            asset_list="$CACHE_DIR/release_assets_$(date +%s%N).list"
+            asset_list="$CACHE_DIR/release_assets_$(date +%s%N).txt"
 
             echo "Fetching release assets: $url -> $final_dir"
 
@@ -364,11 +305,6 @@ jobs:
 
               asset_name="$(basename "${asset_url%%\?*}")"
               asset_name="$(sanitize_name "$asset_name")"
-
-              if [[ "${asset_name,,}" == *.txt ]]; then
-                asset_name="${asset_name%.*}.list"
-              fi
-
               asset_path="$final_dir/$asset_name"
 
               echo "Downloading asset: $asset_url -> $asset_path"
@@ -427,50 +363,6 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-
-          FAKEIP_LIST="mihomo/rule-set/geosite/fakeip-filter.list"
-          FAKEIP_MRS="mihomo/rule-set/geosite/fakeip-filter.mrs"
-          FAKEIP_VERIFY_DIR="$(mktemp -d)"
-          FAKEIP_DECOMPILED="$FAKEIP_VERIFY_DIR/fakeip-filter.list"
-          trap 'rm -rf "$FAKEIP_VERIFY_DIR"' EXIT
-
-          if [[ ! -s "$FAKEIP_LIST" || ! -s "$FAKEIP_MRS" ]]; then
-            echo "Error: fakeip-filter list or mrs is missing/empty"
-            exit 1
-          fi
-
-          if grep -Eqi '3gppnetwork\.org' "$FAKEIP_LIST"; then
-            echo "Error: fakeip-filter list contains 3gppnetwork rules"
-            exit 1
-          fi
-
-          if ! grep -Fqx '+.lan' "$FAKEIP_LIST" || grep -Fqx '*.lan' "$FAKEIP_LIST"; then
-            echo "Error: fakeip-filter list must contain +.lan and must not contain *.lan"
-            exit 1
-          fi
-
-          ./mihomo-bin convert-ruleset domain mrs "$FAKEIP_MRS" "$FAKEIP_DECOMPILED"
-
-          if grep -Eqi '3gppnetwork\.org' "$FAKEIP_DECOMPILED"; then
-            echo "Error: fakeip-filter mrs contains 3gppnetwork rules"
-            exit 1
-          fi
-
-          if ! grep -Fqx '+.lan' "$FAKEIP_DECOMPILED" || grep -Fqx '*.lan' "$FAKEIP_DECOMPILED"; then
-            echo "Error: fakeip-filter mrs must contain +.lan and must not contain *.lan"
-            exit 1
-          fi
-
-          rm -rf "$FAKEIP_VERIFY_DIR"
-          trap - EXIT
-
-          echo "Verified fakeip-filter: 3gppnetwork removed, +.lan retained, MRS valid"
-
-          if find mihomo/rule-set -type f -name "*.txt" -print -quit | grep -q .; then
-            echo "Error: mihomo/rule-set still contains .txt files; all text rules must use .list"
-            find mihomo/rule-set -type f -name "*.txt" -print
-            exit 1
-          fi
 
           echo "=== Conversion Summary ==="
           echo
