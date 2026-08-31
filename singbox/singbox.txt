@@ -5,36 +5,16 @@ OPTION|max_repository_inactive_days|90
 https://raw.githubusercontent.com/TG-Twilight/AWAvenue-Ads-Rule/main/Filters/AWAvenue-Ads-Rule-Clash-Classical.yaml@adblock
 
 # DustinWin/ruleset_geodata
-RULE-SET|DustinWin/ruleset_geodata|cn|https://raw.githubusercontent.com/DustinWin/ruleset_geodata/sing-box-ruleset/cn.json|https://raw.githubusercontent.com/DustinWin/ruleset_geodata/sing-box-ruleset/cn.srs
-RULE-SET|DustinWin/ruleset_geodata|cnip|https://raw.githubusercontent.com/DustinWin/ruleset_geodata/sing-box-ruleset/cnip.json|https://raw.githubusercontent.com/DustinWin/ruleset_geodata/sing-box-ruleset/cnip.srs
-RULE-SET|DustinWin/ruleset_geodata|private|https://raw.githubusercontent.com/DustinWin/ruleset_geodata/sing-box-ruleset/private.json|https://raw.githubusercontent.com/DustinWin/ruleset_geodata/sing-box-ruleset/private.srs
-RULE-SET|DustinWin/ruleset_geodata|ads|https://raw.githubusercontent.com/DustinWin/ruleset_geodata/sing-box-ruleset/ads.json|https://raw.githubusercontent.com/DustinWin/ruleset_geodata/sing-box-ruleset/ads.srs
-RULE-SET|DustinWin/ruleset_geodata|proxy|https://raw.githubusercontent.com/DustinWin/ruleset_geodata/sing-box-ruleset/proxy.json|https://raw.githubusercontent.com/DustinWin/ruleset_geodata/sing-box-ruleset/proxy.srs
-RULE-SET|DustinWin/ruleset_geodata|ai|https://raw.githubusercontent.com/DustinWin/ruleset_geodata/sing-box-ruleset/ai.json|https://raw.githubusercontent.com/DustinWin/ruleset_geodata/sing-box-ruleset/ai.srs
-RULE-SET|DustinWin/ruleset_geodata|games|https://raw.githubusercontent.com/DustinWin/ruleset_geodata/sing-box-ruleset/games.json|https://raw.githubusercontent.com/DustinWin/ruleset_geodata/sing-box-ruleset/games.srs
-RULE-SET|DustinWin/ruleset_geodata|microsoft-cn|https://raw.githubusercontent.com/DustinWin/ruleset_geodata/sing-box-ruleset/microsoft-cn.json|https://raw.githubusercontent.com/DustinWin/ruleset_geodata/sing-box-ruleset/microsoft-cn.srs
-RULE-SET|DustinWin/ruleset_geodata|apple-cn|https://raw.githubusercontent.com/DustinWin/ruleset_geodata/sing-box-ruleset/apple-cn.json|https://raw.githubusercontent.com/DustinWin/ruleset_geodata/sing-box-ruleset/apple-cn.srs
-RULE-SET|DustinWin/ruleset_geodata|games-cn|https://raw.githubusercontent.com/DustinWin/ruleset_geodata/sing-box-ruleset/games-cn.json|https://raw.githubusercontent.com/DustinWin/ruleset_geodata/sing-box-ruleset/games-cn.srs
-RULE-SET|DustinWin/ruleset_geodata|networktest|https://raw.githubusercontent.com/DustinWin/ruleset_geodata/sing-box-ruleset/networktest.json|https://raw.githubusercontent.com/DustinWin/ruleset_geodata/sing-box-ruleset/networktest.srs
-RULE-SET|DustinWin/ruleset_geodata|netflix|https://raw.githubusercontent.com/DustinWin/ruleset_geodata/sing-box-ruleset/netflix.json|https://raw.githubusercontent.com/DustinWin/ruleset_geodata/sing-box-ruleset/netflix.srs
-RULE-SET|DustinWin/ruleset_geodata|disney|https://raw.githubusercontent.com/DustinWin/ruleset_geodata/sing-box-ruleset/disney.json|https://raw.githubusercontent.com/DustinWin/ruleset_geodata/sing-box-ruleset/disney.srs
-RULE-SET|DustinWin/ruleset_geodata|youtube|https://raw.githubusercontent.com/DustinWin/ruleset_geodata/sing-box-ruleset/youtube.json|https://raw.githubusercontent.com/DustinWin/ruleset_geodata/sing-box-ruleset/youtube.srs
-RULE-SET|DustinWin/ruleset_geodata|spotify|https://raw.githubusercontent.com/DustinWin/ruleset_geodata/sing-box-ruleset/spotify.json|https://raw.githubusercontent.com/DustinWin/ruleset_geodata/sing-box-ruleset/spotify.srs
-RULE-SET|DustinWin/ruleset_geodata|primevideo|https://raw.githubusercontent.com/DustinWin/ruleset_geodata/sing-box-ruleset/primevideo.json|https://raw.githubusercontent.com/DustinWin/ruleset_geodata/sing-box-ruleset/primevideo.srs
+REPOSITORY|DustinWin/ruleset_geodata|cn,cnip,private,ads,proxy,ai,games,microsoft-cn,apple-cn,games-cn,networktest,netflix,disney,youtube,spotify,primevideo|https://raw.githubusercontent.com/DustinWin/ruleset_geodata/sing-box-ruleset/{name}.json|https://raw.githubusercontent.com/DustinWin/ruleset_geodata/sing-box-ruleset/{name}.srs
 
 # senshinya/singbox_ruleset
-RULE-SET|senshinya/singbox_ruleset|Google|https://raw.githubusercontent.com/senshinya/singbox_ruleset/main/rule/Google/Google.json|https://raw.githubusercontent.com/senshinya/singbox_ruleset/main/rule/Google/Google.srs
-RULE-SET|senshinya/singbox_ruleset|Android|https://raw.githubusercontent.com/senshinya/singbox_ruleset/main/rule/Android/Android.json|https://raw.githubusercontent.com/senshinya/singbox_ruleset/main/rule/Android/Android.srs
-RULE-SET|senshinya/singbox_ruleset|GoogleFCM|https://raw.githubusercontent.com/senshinya/singbox_ruleset/main/rule/GoogleFCM/GoogleFCM.json|https://raw.githubusercontent.com/senshinya/singbox_ruleset/main/rule/GoogleFCM/GoogleFCM.srs
-RULE-SET|senshinya/singbox_ruleset|BlockHttpDNS|https://raw.githubusercontent.com/senshinya/singbox_ruleset/main/rule/BlockHttpDNS/BlockHttpDNS.json|https://raw.githubusercontent.com/senshinya/singbox_ruleset/main/rule/BlockHttpDNS/BlockHttpDNS.srs
-RULE-SET|senshinya/singbox_ruleset|AdGuardSDNSFilter|https://raw.githubusercontent.com/senshinya/singbox_ruleset/main/rule/AdGuardSDNSFilter/AdGuardSDNSFilter.json|https://raw.githubusercontent.com/senshinya/singbox_ruleset/main/rule/AdGuardSDNSFilter/AdGuardSDNSFilter.srs
+REPOSITORY|senshinya/singbox_ruleset|Google,Android,GoogleFCM,BlockHttpDNS,AdGuardSDNSFilter|https://raw.githubusercontent.com/senshinya/singbox_ruleset/main/rule/{name}/{name}.json|https://raw.githubusercontent.com/senshinya/singbox_ruleset/main/rule/{name}/{name}.srs
 
 # MetaCubeX/meta-rules-dat
-RULE-SET|MetaCubeX/meta-rules-dat|gfw|https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/gfw.json|https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/gfw.srs
-RULE-SET|MetaCubeX/meta-rules-dat|telegram|https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/telegram.json|https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/telegram.srs
+REPOSITORY|MetaCubeX/meta-rules-dat|gfw,telegram|https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/{name}.json|https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/{name}.srs
 
 # 217heidai/adblockfilters
-RULE-SET|217heidai/adblockfilters|geosite_adguard|https://raw.githubusercontent.com/217heidai/adblockfilters/main/rules/adblocksingbox.json|https://raw.githubusercontent.com/217heidai/adblockfilters/main/rules/adblocksingbox.srs
+REPOSITORY|217heidai/adblockfilters|geosite_adguard=adblocksingbox|https://raw.githubusercontent.com/217heidai/adblockfilters/main/rules/{name}.json|https://raw.githubusercontent.com/217heidai/adblockfilters/main/rules/{name}.srs
 
 # SagerNet/sing-geosite（上游仅提供 SRS，工作流会反编译出可读 JSON）
-RULE-SET|SagerNet/sing-geosite|geosite-category-ads-all||https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-category-ads-all.srs
+REPOSITORY|SagerNet/sing-geosite|geosite-category-ads-all||https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/{name}.srs
