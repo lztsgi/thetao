@@ -1,6 +1,6 @@
 #LAN
 *
-*.lan
++.lan
 *.localdomain
 *.example
 *.invalid
@@ -144,12 +144,10 @@ static.adtidy.org
 +.sandai.net
 +.n0808.com
 #T-mobile and Ultra Mobile wifi calling
-+.3gppnetwork.org
 #UU Plugin
 +.uu.163.com
 ps.res.netease.com
 #Wifi Calling
-+.pub.3gppnetwork.org
 #向日葵远程控制
 +.oray.com
 +.orayimg.com
