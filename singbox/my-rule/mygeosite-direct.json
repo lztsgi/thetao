@@ -2,7 +2,20 @@
   "version": 3,
   "rules": [
     {
+      "domain": [
+        "localhost"
+      ]
+    },
+    {
       "domain_suffix": [
+        ".lan",
+        ".localdomain",
+        ".example",
+        ".invalid",
+        ".localhost",
+        ".test",
+        ".local",
+        ".direct",
         "taome.xyz",
         "h.taome.xyz",
         "ys.taome.xyz",
