@@ -29,3 +29,14 @@ DOMAIN,epdg.epc.mnc002.mcc262.pub.3gppnetwork.org
 DOMAIN,epdg.epc.drz1.vodafone-ip.de
 # Vodafone DE ePDG
 IP-CIDR,139.7.117.160/28,no-resolve
+
+# =========================
+# Vodafone UK / VOXI
+# =========================
+DOMAIN,epdg.epc.mnc015.mcc234.pub.3gppnetwork.org
+DOMAIN,ss.epdg.epc.mnc015.mcc234.pub.3gppnetwork.org
+DOMAIN,ss.epdg.epc.geo.mnc015.mcc234.pub.3gppnetwork.org
+DOMAIN,entsrv-uk.vodafone.com
+# Vodafone ePDG 当前及备用地址段
+IP-CIDR,88.82.0.0/19,no-resolve
+IP-CIDR,148.252.160.0/19,no-resolve
